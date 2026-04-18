@@ -1,0 +1,147 @@
+# ModeruBakappu Implementation Plan
+
+## Objective
+
+Replace the discarded Python mock with a native SwiftUI/AppKit macOS application that handles folder permissions, removable backup drives, and model indexing safely.
+
+## Phase 0: Repository Baseline
+
+- remove mock Python implementation
+- keep repository instructions and project-level documentation
+- add native-app design and implementation planning docs
+- initialize git and create the first baseline commit
+
+## Phase 1: App Skeleton
+
+Deliverable: a runnable macOS app shell with no backup logic yet.
+
+Tasks:
+
+- create Xcode project
+- add SwiftUI app entry
+- add basic navigation structure
+- add app support directory utilities
+- add settings persistence
+
+Exit criteria:
+
+- app launches
+- settings window exists
+- app can persist simple local settings
+
+## Phase 2: Permissions and Folder Selection
+
+Deliverable: onboarding and persistent access to selected folders.
+
+Tasks:
+
+- implement onboarding flow
+- add folder selection using native macOS panels
+- persist selections as security-scoped bookmarks
+- implement bookmark resolution on relaunch
+- surface access failures as UI state
+
+Exit criteria:
+
+- user can select LM Studio folder
+- user can select backup root
+- selections persist across relaunch
+- invalid or stale selections are reported cleanly
+
+## Phase 3: Drive Validation
+
+Deliverable: reliable backup destination state handling.
+
+Tasks:
+
+- identify selected backup volume
+- detect online/offline state
+- validate backup root existence and writability
+- disable write operations while offline
+- keep existing index records available when the drive is absent
+
+Exit criteria:
+
+- app distinguishes offline drive from missing permission
+- backup actions are gated by drive state
+- records remain visible when drive is disconnected
+
+## Phase 4: LM Studio Discovery
+
+Deliverable: correct LM Studio model indexing.
+
+Tasks:
+
+- read LM Studio settings for likely folder hints
+- support user override as the source of truth
+- scan the selected folder
+- build local model index
+- show scan errors per source
+
+Exit criteria:
+
+- app lists models from the confirmed LM Studio directory
+- index survives relaunch
+- permission and path failures are visible
+
+## Phase 5: Backup and Restore
+
+Deliverable: safe copy-based backup and restore flow.
+
+Tasks:
+
+- plan copy destinations
+- perform backup copy jobs
+- verify copied output
+- write backup records locally
+- implement restore flow
+- optionally support local removal only after verified backup
+
+Exit criteria:
+
+- model backup succeeds to external drive
+- restore succeeds back to local storage
+- failed copies do not remove local originals
+
+## Phase 6: Ollama Support
+
+Deliverable: verified Ollama indexing strategy.
+
+Tasks:
+
+- specify current Ollama storage representation in code comments and tests
+- implement manifest-aware discovery
+- decide how backup granularity should work for Ollama
+- ship only after per-model safety is demonstrated
+
+Exit criteria:
+
+- Ollama discovery is backed by fixture-based tests
+- backup behavior does not operate on the whole store by mistake
+
+## Testing Strategy
+
+- unit tests for bookmark handling and index persistence
+- fixture-based tests for source discovery
+- integration tests for backup planning and verification
+- manual QA for removable drive behavior on macOS
+
+## Initial Directory Target
+
+Planned post-scaffold structure:
+
+```text
+ModeruBakappu/
+  ModeruBakappu.xcodeproj
+  ModeruBakappu/
+    App/
+    Domain/
+    Services/
+    UI/
+    Resources/
+  ModeruBakappuTests/
+```
+
+## Immediate Next Step
+
+Create the Xcode project and implement Phases 1 and 2 before writing any model-moving logic.

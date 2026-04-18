@@ -1,0 +1,27 @@
+# Xcode / SwiftPM
+.build/
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+.swiftpm/
+Package.resolved
+
+# App artifacts
+*.app
+*.dSYM
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local agent / tool state
+.claude/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
