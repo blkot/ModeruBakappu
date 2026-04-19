@@ -76,6 +76,8 @@ struct OnboardingView: View {
             return .orange
         case .readOnly:
             return .yellow
+        case .permissionDenied:
+            return .red
         case .notConfigured, .offline:
             return .secondary
         }

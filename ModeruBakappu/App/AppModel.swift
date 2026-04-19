@@ -190,6 +190,10 @@ final class AppModel: ObservableObject {
         backupDriveState == .online && !lmStudioModels.isEmpty
     }
 
+    var backupDriveSummary: String {
+        lastBackupValidationFailure ?? backupDriveState.summary
+    }
+
     private func loadBackupIndex() {
         do {
             backupRecords = try backupIndexStore.loadIndex()
@@ -331,12 +335,12 @@ final class AppModel: ObservableObject {
                 guard try canWriteProbeFile(in: url) else {
                     lastBackupValidationFailure = "The app could not write inside the selected backup folder."
                     print("[AppModel] backup root read only after write probe failed")
-                    return .readOnly
+                    return .permissionDenied
                 }
             } catch let error as NSError {
                 lastBackupValidationFailure = error.localizedDescription
                 print("[AppModel] backup validation threw error: \(error.localizedDescription)")
-                return .readOnly
+                return .permissionDenied
             }
 
             lastBackupValidationFailure = nil
@@ -347,7 +351,7 @@ final class AppModel: ObservableObject {
 
     private func canWriteProbeFile(in directoryURL: URL) throws -> Bool {
         let probeURL = directoryURL.appendingPathComponent(
-            ".moderubakappu-write-probe-\(UUID().uuidString).tmp",
+            "moderubakappu-write-probe-\(UUID().uuidString).tmp",
             isDirectory: false
         )
 
@@ -364,6 +368,7 @@ final class AppModel: ObservableObject {
 
     private func withScopedAccess<T>(to url: URL, perform: () -> T) -> T {
         let started = url.startAccessingSecurityScopedResource()
+        print("[AppModel] startAccessingSecurityScopedResource path=\(url.path) started=\(started)")
         defer {
             if started {
                 url.stopAccessingSecurityScopedResource()

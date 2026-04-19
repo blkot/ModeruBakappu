@@ -51,6 +51,7 @@ enum BackupDriveState: Equatable {
     case offline
     case staleBookmark
     case readOnly
+    case permissionDenied
 
     var title: String {
         switch self {
@@ -64,6 +65,8 @@ enum BackupDriveState: Equatable {
             return "Needs Reselection"
         case .readOnly:
             return "Read Only"
+        case .permissionDenied:
+            return "Permission Denied"
         }
     }
 
@@ -79,6 +82,8 @@ enum BackupDriveState: Equatable {
             return "The saved backup folder reference is stale and must be selected again."
         case .readOnly:
             return "The selected backup folder can be read but not written."
+        case .permissionDenied:
+            return "The selected backup folder exists, but the app does not currently have write permission."
         }
     }
 }
