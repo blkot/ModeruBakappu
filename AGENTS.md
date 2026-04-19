@@ -1,148 +1,214 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Codex and other coding agents working in this repository.
 
 ## Project Overview
 
-ModeruBakappu is a Python-based TUI application for managing LLM model backups between internal and external storage on macOS. The application detects installed LLM services (LM Studio, Omlx, Ollama), lists local models, and provides backup/restore functionality to manage limited drive space.
+ModeruBakappu is being rebuilt as a native macOS app for managing local LLM model storage and backing selected models up to an external drive safely.
 
-## Tech Stack
+The previous Python/Textual codebase was a throwaway mock and has been removed. Treat this repository as the clean planning baseline for the SwiftUI/AppKit implementation.
 
-- **Language**: Python 3.9+
-- **TUI Framework**: Textual (modern, async TUI library)
+## Current Repository State
+
+At the moment, the repository contains:
+
+- project guidance in this file
+- a top-level `README.md`
+- design and planning documents under `docs/`
+
+It does not yet contain:
+
+- an Xcode project
+- Swift source files
+- tests
+- production app logic
+
+Do not write guidance that assumes the old Python structure still exists.
+
+## Target Tech Stack
+
 - **Platform**: macOS only
-- **Storage**: File system operations with JSON configuration
+- **Primary UI**: SwiftUI
+- **Platform Integration**: AppKit where SwiftUI is insufficient
+- **Language**: Swift
+- **Concurrency**: Swift Concurrency
+- **Persistence**:
+  - v1: JSON in the app support directory
+  - later: SQLite if history and indexing needs outgrow JSON
 
-## Project Structure
+## Intended Project Structure
 
+Once scaffolding begins, prefer a structure similar to:
+
+```text
+ModeruBakappu/
+├── ModeruBakappu.xcodeproj
+├── ModeruBakappu/
+│   ├── App/
+│   ├── Domain/
+│   ├── Services/
+│   ├── UI/
+│   └── Resources/
+├── ModeruBakappuTests/
+├── README.md
+├── docs/
+└── AGENTS.md
 ```
-moderu_bakappu/
-├── main.py                    # Application entry point and TUI interface
-├── core/                      # Core functionality modules
-│   ├── __init__.py
-│   ├── llm_detector.py        # LLM service detection logic
-│   └── model_manager.py       # Model operations (backup/restore/list)
-├── requirements.txt           # Python dependencies
-├── README.md                  # User documentation
-└── AGENTS.md                  # This file
-```
 
-## Architecture
+Until the Xcode project exists, keep repository changes focused on planning, scaffolding, and native macOS implementation work.
 
-### Core Components
+## Architecture Direction
 
-1. **LLMDetector** (`core/llm_detector.py`)
-   - Detects installed LLM services by checking known storage paths
-   - Service patterns for LM Studio, Omlx, and Ollama
-   - Returns service information including model storage paths
+The app should be organized around four layers:
 
-2. **ModelManager** (`core/model_manager.py`)
-   - Lists models from detected services (supports different storage patterns)
-   - Handles model backup to external storage
-   - Restores models from backup
-   - Manages backup index and configuration
-   - Calculates storage statistics
+1. **App**
+   - app entry
+   - dependency wiring
+   - window and navigation setup
 
-3. **TUI Interface** (`main.py`)
-   - Textual-based terminal interface
-   - Displays model lists with metadata
-   - Provides backup/restore controls
-   - Shows storage statistics
+2. **Domain**
+   - app state and domain models
+   - no direct filesystem side effects
 
-### LLM Service Storage Patterns
+3. **Services**
+   - source discovery
+   - bookmark persistence
+   - volume monitoring
+   - backup coordination
+   - index persistence
 
-- **LM Studio**: `~/Library/Application Support/LM Studio/Models/` (recursive .gguf files)
-- **Omlx**: `~/.ollx/models/` (directory-based model storage)
-- **Ollama**: `~/.ollama/models/` (blob storage with manifest)
+4. **UI**
+   - onboarding
+   - settings
+   - source status
+   - model browser
+   - backup and restore flows
 
-### Configuration Files
+Keep filesystem access out of views.
 
-- **App Config**: `~/.moderu_bakappu/config.json` (backup path, preferences)
-- **Backup Index**: `~/.moderu_bakappu/backup_index.json` (tracks backed up models)
+## Key Product Constraints
+
+### 1. macOS File Access
+
+macOS access to model folders and external-drive locations should be treated as a first-class product concern.
+
+- Prefer user-selected folders over long-term reliance on hardcoded paths.
+- Persist access using security-scoped bookmarks.
+- Model permission failures as explicit UI state.
+- Do not silently convert permission problems into "empty folder" results.
+
+### 2. External Backup Drive
+
+The backup destination may be disconnected for long periods.
+
+- Keep local records even when the drive is offline.
+- Validate drive presence and writability before any backup or restore write.
+- Track volume identity, not only mount path strings.
+- Disable destructive operations while the drive is offline or unverified.
+
+### 3. Safe Backup Semantics
+
+Backup logic must be conservative.
+
+- Copy first.
+- Verify the copied result.
+- Persist the backup record.
+- Only then allow optional local removal if that feature exists.
+
+Never implement "move first and hope" behavior.
+
+## Service-Specific Guidance
+
+### LM Studio
+
+LM Studio should be treated as a configurable source.
+
+- Read LM Studio settings for folder hints when useful.
+- Let the user confirm or override the folder.
+- Treat the user-confirmed folder as the source of truth.
+
+Do not hardcode one fixed LM Studio path as the only supported location.
+
+### Ollama
+
+Ollama support should only be added after its current on-disk representation is specified with tests and fixtures.
+
+- Do not guess manifest layout.
+- Do not treat the entire Ollama models store as one model.
+- Do not implement per-model backup until backup granularity is clearly safe.
+
+## Persistence Guidance
+
+For v1, keep persistence simple and local.
+
+Suggested stored data:
+
+- app settings
+- bookmark data
+- source status cache
+- model index
+- backup records
+
+Prefer storing app data under the standard macOS application support location for the app once the bundle exists.
+
+## UI Guidance
+
+Use SwiftUI by default, but do not force everything through SwiftUI if AppKit is the better fit.
+
+Use AppKit for cases such as:
+
+- `NSOpenPanel` for folder selection
+- macOS-specific file and volume interactions
+- any integration where SwiftUI introduces unnecessary friction
+
+The app should prioritize:
+
+- explicit status
+- low-friction onboarding
+- safe destructive actions
+- clear offline and permission messaging
+
+## Development Priorities
+
+Build in this order:
+
+1. app skeleton
+2. onboarding and settings
+3. bookmark persistence
+4. drive validation
+5. LM Studio discovery
+6. backup and restore
+7. later source support such as Ollama
+
+Do not start with backup logic before permissions and drive state are implemented.
+
+## Testing Guidance
+
+When tests are added, prefer:
+
+- unit tests for domain logic
+- fixture-based tests for source discovery
+- integration tests for backup planning and verification
+
+Any service-layout assumptions should be covered by tests with realistic fixtures, not by constants that merely assert hardcoded paths back to themselves.
 
 ## Development Commands
 
-### Installation
-```bash
-# Install dependencies
-pip install -r requirements.txt
-```
+There is no app target yet. Do not add commands here that assume the Xcode project already exists.
 
-### Running the Application
-```bash
-# Run the TUI application
-python main.py
-```
+Once the native app is scaffolded, add and maintain the relevant `xcodebuild` commands for:
 
-### Development
-```bash
-# Run with verbose output for debugging
-python main.py --debug
+- building
+- running tests
+- linting or formatting, if adopted
 
-# Test specific components
-python -m core.llm_detector
-python -m core.model_manager
-```
+## Documents to Keep in Sync
 
-## Key Design Decisions
+When architecture or scope changes, update these together:
 
-1. **Service Pattern System**: LLM services use different storage patterns (GGUF files, directories, blobs). The `llm_detector.py` uses a pattern-based approach to handle different storage structures.
+- `AGENTS.md`
+- `README.md`
+- `docs/design.md`
+- `docs/implementation-plan.md`
 
-2. **Model Identification**: Models are identified using `service_id:model_name` format to avoid conflicts between services with similarly named models.
-
-3. **Backup Index**: JSON-based tracking system maintains the relationship between original paths and backup locations, enabling restoration without service-specific logic.
-
-4. **Error Handling**: File operations are wrapped in try-except blocks to handle permission issues, missing files, and other filesystem errors gracefully.
-
-## Extension Points
-
-### Adding New LLM Services
-
-To add support for a new LLM service:
-
-1. Add service configuration to `SERVICE_PATTERNS` in `core/llm_detector.py`
-2. Implement storage pattern detection method in `ModelManager`
-3. Update model discovery logic if service uses unique storage format
-
-### Improving TUI
-
-The TUI is built with Textual framework. Key areas for enhancement:
-- Model filtering and search
-- Batch operations (multiple selection)
-- Progress bars for large file operations
-- Better error display and handling
-- Configuration interface within TUI
-
-## macOS-Specific Considerations
-
-- Application support directory: `~/Library/Application Support/`
-- Hidden config directory: `~/.moderu_bakappu/`
-- External drive mounting: `/Volumes/`
-- File system case sensitivity: macOS is case-insensitive by default
-- Permission handling: Some model directories may require elevated permissions
-
-## Common Patterns
-
-### Error Handling
-Always wrap filesystem operations in try-except blocks to handle `OSError`, `IOError`, and `shutil.Error` exceptions.
-
-### Path Operations
-Use `pathlib.Path` for all path operations instead of string manipulation. This ensures cross-platform compatibility and better error handling.
-
-### Configuration Management
-User-specific configuration is stored in `~/.moderu_bakappu/`. Create this directory if it doesn't exist on startup.
-
-### Model Discovery
-Different services use different patterns. The `pattern` field in service configuration determines which discovery method to use:
-- `recursive_gguf`: Search recursively for .gguf files
-- `directory_based`: Each subdirectory is a model
-- `blob_storage`: Complex blob storage (requires manifest parsing)
-
-## Future Enhancement Ideas
-
-1. **Automatic Service Detection**: Monitor filesystem for new LLM service installations
-2. **Smart Backup Suggestions**: Suggest models to backup based on usage patterns
-3. **Compression**: Optional compression for backup storage
-4. **Cloud Integration**: Support cloud storage backends
-5. **Scheduled Backups**: Automatic backup operations
-6. **Model Metadata**: Extract and display model parameters, quantization, etc.
+These files should describe the current intended direction, not an obsolete implementation.
