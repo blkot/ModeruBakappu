@@ -12,18 +12,13 @@ The previous Python/Textual codebase was a throwaway mock and has been removed. 
 
 At the moment, the repository contains:
 
+- the macOS Xcode project
+- Swift source files for the app shell, discovery, and backup flow
 - project guidance in this file
 - a top-level `README.md`
 - design and planning documents under `docs/`
 
-It does not yet contain:
-
-- an Xcode project
-- Swift source files
-- tests
-- production app logic
-
-Do not write guidance that assumes the old Python structure still exists.
+The old Python structure no longer exists.
 
 ## Target Tech Stack
 
@@ -72,7 +67,7 @@ The app should be organized around four layers:
 
 3. **Services**
    - source discovery
-   - bookmark persistence
+   - path/settings persistence
    - volume monitoring
    - backup coordination
    - index persistence
@@ -92,8 +87,8 @@ Keep filesystem access out of views.
 
 macOS access to model folders and external-drive locations should be treated as a first-class product concern.
 
-- Prefer user-selected folders over long-term reliance on hardcoded paths.
-- Persist access using security-scoped bookmarks.
+- The app is intentionally distributed outside the App Store and does not rely on App Sandbox.
+- Prefer automatic provider detection where practical, with user override when detection fails.
 - Model permission failures as explicit UI state.
 - Do not silently convert permission problems into "empty folder" results.
 
@@ -124,8 +119,9 @@ Never implement "move first and hope" behavior.
 LM Studio should be treated as a configurable source.
 
 - Read LM Studio settings for folder hints when useful.
-- Let the user confirm or override the folder.
-- Treat the user-confirmed folder as the source of truth.
+- Auto-detect the configured folder when possible.
+- Let the user confirm or override the folder if detection fails or looks ambiguous.
+- Treat the resolved folder as the source of truth.
 
 Do not hardcode one fixed LM Studio path as the only supported location.
 
@@ -144,7 +140,7 @@ For v1, keep persistence simple and local.
 Suggested stored data:
 
 - app settings
-- bookmark data
+- provider path settings
 - source status cache
 - model index
 - backup records
@@ -174,11 +170,10 @@ Build in this order:
 
 1. app skeleton
 2. onboarding and settings
-3. bookmark persistence
-4. drive validation
-5. LM Studio discovery
-6. backup and restore
-7. later source support such as Ollama
+3. drive validation
+4. LM Studio detection and discovery
+5. backup and restore
+6. later source support such as Ollama
 
 Do not start with backup logic before permissions and drive state are implemented.
 

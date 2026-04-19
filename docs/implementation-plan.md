@@ -2,7 +2,7 @@
 
 ## Objective
 
-Replace the discarded Python mock with a native SwiftUI/AppKit macOS application that handles folder permissions, removable backup drives, and model indexing safely.
+Replace the discarded Python mock with a native SwiftUI/AppKit macOS application that handles provider auto-detection, removable backup drives, and model indexing safely.
 
 ## Phase 0: Repository Baseline
 
@@ -29,24 +29,26 @@ Exit criteria:
 - settings window exists
 - app can persist simple local settings
 
-## Phase 2: Permissions and Folder Selection
+## Phase 2: Onboarding and Path Settings
 
-Deliverable: onboarding and persistent access to selected folders.
+Deliverable: onboarding plus persisted source and backup paths.
 
 Tasks:
 
 - implement onboarding flow
-- add folder selection using native macOS panels
-- persist selections as security-scoped bookmarks
-- implement bookmark resolution on relaunch
+- add provider auto-detection for likely source folders
+- add folder selection using native macOS panels as fallback
+- persist resolved selections in app settings
+- restore settings on relaunch
 - surface access failures as UI state
 
 Exit criteria:
 
-- user can select LM Studio folder
+- app can auto-detect LM Studio when configuration is available
+- user can override LM Studio folder
 - user can select backup root
 - selections persist across relaunch
-- invalid or stale selections are reported cleanly
+- invalid selections are reported cleanly
 
 ## Phase 3: Drive Validation
 
@@ -73,6 +75,7 @@ Deliverable: correct LM Studio model indexing.
 Tasks:
 
 - read LM Studio settings for likely folder hints
+- resolve the current configured folder automatically when possible
 - support user override as the source of truth
 - scan the selected folder
 - build local model index
@@ -121,7 +124,7 @@ Exit criteria:
 
 ## Testing Strategy
 
-- unit tests for bookmark handling and index persistence
+- unit tests for path/settings handling and index persistence
 - fixture-based tests for source discovery
 - integration tests for backup planning and verification
 - manual QA for removable drive behavior on macOS
@@ -144,4 +147,4 @@ ModeruBakappu/
 
 ## Immediate Next Step
 
-Create the Xcode project and implement Phases 1 and 2 before writing any model-moving logic.
+Implement provider auto-detection for LM Studio before expanding backup or restore behavior.

@@ -6,7 +6,7 @@ ModeruBakappu is a native macOS app for managing local LLM model storage and bac
 
 The app should be designed around three constraints:
 
-1. macOS file access is permission-driven and user-selected.
+1. macOS file access is local-first, but provider data lives in app-specific locations that may move.
 2. The backup destination may be offline for long periods.
 3. Model discovery logic is service-specific and should not be mixed with backup orchestration.
 
@@ -54,13 +54,13 @@ Suggested models:
 
 ### Services Layer
 
-Concrete logic for filesystem access, discovery, bookmarks, and backup execution.
+Concrete logic for filesystem access, discovery, settings persistence, and backup execution.
 
 Suggested services:
 
 - `LMStudioService`
 - `OllamaService`
-- `BookmarkStore`
+- `PathStore`
 - `VolumeMonitor`
 - `BackupCoordinator`
 - `IndexStore`
@@ -85,15 +85,15 @@ Suggested screens:
 ### First Launch
 
 1. Show onboarding.
-2. Explain that the app needs access to model folders and a backup folder.
-3. Let the user choose the LM Studio models folder or let the app prefill a detected candidate.
+2. Explain that the app will try to detect provider model folders and needs a backup folder.
+3. Detect LM Studio and other supported providers from current settings and known layouts.
 4. Let the user choose the backup root on an external drive.
-5. Store both selections as security-scoped bookmarks.
+5. Persist the resolved paths in app settings.
 6. Validate read/write access before completing onboarding.
 
 ### Startup Preflight
 
-1. Resolve stored bookmarks.
+1. Resolve stored source and backup paths from app settings.
 2. Check whether the selected source folders are still reachable.
 3. Check whether the selected backup volume is mounted.
 4. Confirm that the backup root exists and is writable.
@@ -125,19 +125,20 @@ Suggested screens:
 
 ## Filesystem and Permissions
 
-### User-Selected Access
+### Direct Filesystem Access
 
-The app should not rely on hardcoded paths for long-term access. Use user-selected folders and persist them through security-scoped bookmarks.
+The app is distributed outside the App Store and does not rely on App Sandbox. It may inspect provider settings and known filesystem locations directly.
 
-Hardcoded paths may still be useful as discovery hints, but they should never be the only source of truth.
+Hardcoded paths are still only hints. Provider config or current on-disk state should win when available.
 
 ### LM Studio
 
 LM Studio should be treated as a configurable source. The app should:
 
 1. inspect LM Studio settings for a likely models directory
-2. let the user confirm or override it
-3. persist the confirmed folder bookmark
+2. auto-resolve the current models directory when possible
+3. let the user confirm or override it when detection fails or conflicts
+4. persist the resolved folder path
 
 ### Ollama
 
