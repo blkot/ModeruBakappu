@@ -8,17 +8,37 @@
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @EnvironmentObject private var appModel: AppModel
 
-#Preview {
-    ContentView()
+    var body: some View {
+        Group {
+            if !appModel.hasLoaded {
+                ProgressView("Loading configuration…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if appModel.hasMinimumConfiguration {
+                DashboardView()
+            } else {
+                OnboardingView()
+            }
+        }
+        .frame(minWidth: 760, minHeight: 520)
+        .alert("Configuration Error", isPresented: alertBinding) {
+            Button("OK") {
+                appModel.clearError()
+            }
+        } message: {
+            Text(appModel.errorMessage ?? "")
+        }
+    }
+
+    private var alertBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    appModel.clearError()
+                }
+            }
+        )
+    }
 }
