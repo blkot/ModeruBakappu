@@ -16,13 +16,13 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("ModeruBakappu")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
-                    Text("Startup configuration is ready. LM Studio discovery now uses the configured source folder while backup actions remain gated on drive availability.")
+                    Text("Startup configuration is ready. Source discovery now uses the configured provider folder while backup actions remain gated on drive availability.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
 
                 FolderStatusCard(
-                    title: "LM Studio Models Folder",
+                    title: "\(appModel.sourceDisplayName) Models Folder",
                     path: appModel.lmStudioFolderURL?.path,
                     stateTitle: appModel.lmStudioAccessState.title,
                     summary: appModel.lmStudioAccessState.summary,
@@ -46,6 +46,7 @@ struct DashboardView: View {
                 )
 
                 ModelsPanel(
+                    sourceDisplayName: appModel.sourceDisplayName,
                     discoveryState: appModel.lmStudioDiscoveryState,
                     models: appModel.lmStudioModels,
                     backupState: { model in

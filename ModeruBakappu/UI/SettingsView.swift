@@ -13,7 +13,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Source Access") {
-                LabeledContent("LM Studio Folder") {
+                LabeledContent("\(appModel.sourceDisplayName) Folder") {
                     Text(appModel.lmStudioFolderURL?.path ?? "Not configured")
                         .foregroundStyle(appModel.lmStudioFolderURL == nil ? .secondary : .primary)
                 }
@@ -23,7 +23,7 @@ struct SettingsView: View {
                 }
 
                 HStack {
-                    Button("Choose LM Studio Folder") {
+                    Button("Choose Models Folder") {
                         appModel.selectLMStudioFolder()
                     }
                 }

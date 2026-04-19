@@ -13,7 +13,7 @@ enum LMStudioDiscoveryError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .inaccessibleRoot:
-            return "The selected LM Studio folder could not be scanned."
+            return "The selected models folder could not be scanned."
         }
     }
 }
@@ -25,7 +25,7 @@ final class LMStudioDiscoveryService {
         self.fileManager = fileManager
     }
 
-    func discoverModels(in rootURL: URL) throws -> [DiscoveredModel] {
+    func discoverModels(in rootURL: URL, source: ModelProvider) throws -> [DiscoveredModel] {
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw LMStudioDiscoveryError.inaccessibleRoot
@@ -39,13 +39,13 @@ final class LMStudioDiscoveryService {
             var foundNestedModel = false
 
             for nestedDirectory in nestedDirectories {
-                if let model = try makeModelCandidate(from: nestedDirectory, rootURL: rootURL) {
+                if let model = try makeModelCandidate(from: nestedDirectory, rootURL: rootURL, source: source) {
                     models.append(model)
                     foundNestedModel = true
                 }
             }
 
-            if !foundNestedModel, let directModel = try makeModelCandidate(from: topLevelDirectory, rootURL: rootURL) {
+            if !foundNestedModel, let directModel = try makeModelCandidate(from: topLevelDirectory, rootURL: rootURL, source: source) {
                 models.append(directModel)
             }
         }
@@ -55,7 +55,7 @@ final class LMStudioDiscoveryService {
         }
     }
 
-    private func makeModelCandidate(from directoryURL: URL, rootURL: URL) throws -> DiscoveredModel? {
+    private func makeModelCandidate(from directoryURL: URL, rootURL: URL, source: ModelProvider) throws -> DiscoveredModel? {
         let payload = try directoryPayload(in: directoryURL)
         guard payload.fileCount > 0 else {
             return nil
@@ -67,7 +67,7 @@ final class LMStudioDiscoveryService {
 
         return DiscoveredModel(
             id: relativePath,
-            source: "lm_studio",
+            source: source.rawValue,
             publisher: publisher,
             displayName: directoryURL.lastPathComponent,
             folderURL: directoryURL,

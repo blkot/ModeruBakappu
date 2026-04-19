@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ModelsPanel: View {
+    let sourceDisplayName: String
     let discoveryState: LMStudioDiscoveryState
     let models: [DiscoveredModel]
     let backupState: (DiscoveredModel) -> ModelBackupState
@@ -18,7 +19,7 @@ struct ModelsPanel: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("LM Studio Models")
+                    Text("\(sourceDisplayName) Models")
                         .font(.headline)
                     Text(discoveryState.summary)
                         .font(.subheadline)

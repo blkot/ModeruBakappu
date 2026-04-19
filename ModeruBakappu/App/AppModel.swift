@@ -11,6 +11,7 @@ import Foundation
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var hasLoaded = false
+    @Published private(set) var sourceProvider: ModelProvider = .lmStudio
     @Published private(set) var lmStudioFolderURL: URL?
     @Published private(set) var backupFolderURL: URL?
     @Published private(set) var lmStudioAccessState: SourceAccessState = .notConfigured
@@ -23,7 +24,7 @@ final class AppModel: ObservableObject {
     private let bookmarkStore: BookmarkStore
     private let backupIndexStore: BackupIndexStore
     private let folderPicker: FolderPicker
-    private let lmStudioLocationService: LMStudioLocationService
+    private let modelSourceLocator: ModelSourceLocator
     private let lmStudioDiscoveryService: LMStudioDiscoveryService
     private let backupCoordinator: BackupCoordinator
     private let fileManager: FileManager
@@ -39,7 +40,7 @@ final class AppModel: ObservableObject {
             bookmarkStore: UserDefaultsBookmarkStore(),
             backupIndexStore: JSONBackupIndexStore(),
             folderPicker: OpenPanelFolderPicker(),
-            lmStudioLocationService: LMStudioLocationService(),
+            modelSourceLocator: ModelSourceLocator(),
             lmStudioDiscoveryService: LMStudioDiscoveryService(),
             backupCoordinator: BackupCoordinator(),
             fileManager: .default
@@ -50,7 +51,7 @@ final class AppModel: ObservableObject {
         bookmarkStore: BookmarkStore,
         backupIndexStore: BackupIndexStore,
         folderPicker: FolderPicker,
-        lmStudioLocationService: LMStudioLocationService,
+        modelSourceLocator: ModelSourceLocator,
         lmStudioDiscoveryService: LMStudioDiscoveryService,
         backupCoordinator: BackupCoordinator,
         fileManager: FileManager
@@ -58,7 +59,7 @@ final class AppModel: ObservableObject {
         self.bookmarkStore = bookmarkStore
         self.backupIndexStore = backupIndexStore
         self.folderPicker = folderPicker
-        self.lmStudioLocationService = lmStudioLocationService
+        self.modelSourceLocator = modelSourceLocator
         self.lmStudioDiscoveryService = lmStudioDiscoveryService
         self.backupCoordinator = backupCoordinator
         self.fileManager = fileManager
@@ -66,6 +67,10 @@ final class AppModel: ObservableObject {
 
     var hasMinimumConfiguration: Bool {
         lmStudioFolderURL != nil && backupFolderURL != nil
+    }
+
+    var sourceDisplayName: String {
+        sourceProvider.displayName
     }
 
     func loadIfNeeded() {
@@ -81,14 +86,15 @@ final class AppModel: ObservableObject {
 
     func selectLMStudioFolder() {
         let picked = folderPicker.pickFolder(
-            title: "Choose LM Studio Models Folder",
-            message: "Choose the LM Studio models folder so the app can access it explicitly.",
+            title: "Choose Models Folder",
+            message: "Choose the models folder for the detected provider, or override it with a custom source.",
             prompt: "Use Folder",
             startingAt: lmStudioFolderURL
         )
 
         guard let picked else { return }
-        print("[AppModel] selected LM Studio folder: \(picked.path)")
+        sourceProvider = modelSourceLocator.inferProvider(for: picked)
+        print("[AppModel] selected source folder provider=\(sourceProvider.displayName) path=\(picked.path)")
         saveSelection(picked, for: .lmStudioModels)
     }
 
@@ -178,7 +184,7 @@ final class AppModel: ObservableObject {
         lmStudioDiscoveryState = .scanning
 
         let result: Result<[DiscoveredModel], Error> = withScopedAccess(to: lmStudioFolderURL) {
-            Result { try lmStudioDiscoveryService.discoverModels(in: lmStudioFolderURL) }
+            Result { try lmStudioDiscoveryService.discoverModels(in: lmStudioFolderURL, source: sourceProvider) }
         }
 
         switch result {
@@ -213,10 +219,11 @@ final class AppModel: ObservableObject {
         do {
             if let lmStudioBookmark = try bookmarkStore.loadBookmark(for: .lmStudioModels) {
                 lmStudioFolderURL = lmStudioBookmark.url
+                sourceProvider = modelSourceLocator.inferProvider(for: lmStudioBookmark.url)
                 lmStudioBookmarkIsStale = lmStudioBookmark.isStale
-                print("[AppModel] restored LM Studio bookmark: \(lmStudioBookmark.url.path) stale=\(lmStudioBookmark.isStale)")
+                print("[AppModel] restored source bookmark provider=\(sourceProvider.displayName) path=\(lmStudioBookmark.url.path) stale=\(lmStudioBookmark.isStale)")
             } else {
-                print("[AppModel] no stored LM Studio bookmark")
+                print("[AppModel] no stored source bookmark")
             }
 
             if let backupBookmark = try bookmarkStore.loadBookmark(for: .backupRoot) {
@@ -235,13 +242,14 @@ final class AppModel: ObservableObject {
     private func autoDetectLMStudioFolderIfNeeded() {
         guard lmStudioFolderURL == nil else { return }
 
-        guard let detectedURL = lmStudioLocationService.detectModelsFolder() else {
-            print("[AppModel] no LM Studio folder auto-detected")
+        guard let detectedSource = modelSourceLocator.detectPreferredSource() else {
+            print("[AppModel] no model source auto-detected")
             return
         }
 
-        print("[AppModel] auto-detected LM Studio folder: \(detectedURL.path)")
-        saveSelection(detectedURL, for: .lmStudioModels)
+        sourceProvider = detectedSource.provider
+        print("[AppModel] auto-detected source provider=\(detectedSource.provider.displayName) path=\(detectedSource.folderURL.path)")
+        saveSelection(detectedSource.folderURL, for: .lmStudioModels)
     }
 
     private func saveSelection(_ url: URL, for key: BookmarkKey) {

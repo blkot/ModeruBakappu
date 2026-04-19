@@ -22,7 +22,7 @@ struct OnboardingView: View {
                 }
 
                 FolderStatusCard(
-                    title: "LM Studio Models Folder",
+                    title: "\(appModel.sourceDisplayName) Models Folder",
                     path: appModel.lmStudioFolderURL?.path,
                     stateTitle: appModel.lmStudioAccessState.title,
                     summary: appModel.lmStudioAccessState.summary,

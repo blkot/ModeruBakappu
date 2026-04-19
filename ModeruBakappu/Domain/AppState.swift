@@ -12,6 +12,28 @@ enum BookmarkKey: String, CaseIterable {
     case backupRoot
 }
 
+enum ModelProvider: String, Equatable, Codable {
+    case lmStudio = "lm_studio"
+    case omlx = "omlx"
+    case custom = "custom"
+
+    var displayName: String {
+        switch self {
+        case .lmStudio:
+            return "LM Studio"
+        case .omlx:
+            return "oMLX"
+        case .custom:
+            return "Custom Source"
+        }
+    }
+}
+
+struct DetectedSourceConfiguration: Equatable {
+    let provider: ModelProvider
+    let folderURL: URL
+}
+
 enum SourceAccessState: Equatable {
     case notConfigured
     case ready
@@ -34,7 +56,7 @@ enum SourceAccessState: Equatable {
     var summary: String {
         switch self {
         case .notConfigured:
-            return "Choose the LM Studio models folder before discovery begins."
+            return "Choose a models folder before discovery begins."
         case .ready:
             return "The selected source folder can be accessed."
         case .staleBookmark:
@@ -118,13 +140,13 @@ enum LMStudioDiscoveryState: Equatable {
         case .idle:
             return "Discovery has not run yet."
         case .unavailable:
-            return "LM Studio discovery is unavailable until the source folder is ready."
+            return "Source discovery is unavailable until the models folder is ready."
         case .scanning:
-            return "Scanning the selected LM Studio folder."
+            return "Scanning the selected models folder."
         case let .ready(count):
-            return "Discovered \(count) LM Studio models from the configured folder."
+            return "Discovered \(count) models from the configured folder."
         case .empty:
-            return "No LM Studio models were found in the configured folder."
+            return "No models were found in the configured folder."
         case let .failed(message):
             return message
         }
