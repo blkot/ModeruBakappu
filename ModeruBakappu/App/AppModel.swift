@@ -67,6 +67,7 @@ final class AppModel: ObservableObject {
     func loadIfNeeded() {
         guard !hasLoaded else { return }
 
+        print("[AppModel] loadIfNeeded")
         loadBackupIndex()
         restoreBookmarks()
         refreshStatuses()
@@ -82,6 +83,7 @@ final class AppModel: ObservableObject {
         )
 
         guard let picked else { return }
+        print("[AppModel] selected LM Studio folder: \(picked.path)")
         saveSelection(picked, for: .lmStudioModels)
     }
 
@@ -94,13 +96,16 @@ final class AppModel: ObservableObject {
         )
 
         guard let picked else { return }
+        print("[AppModel] selected backup root: \(picked.path)")
         saveSelection(picked, for: .backupRoot)
     }
 
     func refreshStatuses() {
+        print("[AppModel] refreshStatuses")
         lmStudioAccessState = evaluateSourceFolder(url: lmStudioFolderURL, isStale: lmStudioBookmarkIsStale)
         backupDriveState = evaluateBackupFolder(url: backupFolderURL, isStale: backupBookmarkIsStale)
         refreshModelDiscovery()
+        print("[AppModel] sourceState=\(lmStudioAccessState.title) backupState=\(backupDriveState.title)")
     }
 
     func clearError() {
@@ -188,8 +193,10 @@ final class AppModel: ObservableObject {
     private func loadBackupIndex() {
         do {
             backupRecords = try backupIndexStore.loadIndex()
+            print("[AppModel] loaded backup index entries: \(backupRecords.count)")
         } catch {
             errorMessage = error.localizedDescription
+            print("[AppModel] failed to load backup index: \(error.localizedDescription)")
         }
     }
 
@@ -198,20 +205,28 @@ final class AppModel: ObservableObject {
             if let lmStudioBookmark = try bookmarkStore.loadBookmark(for: .lmStudioModels) {
                 lmStudioFolderURL = lmStudioBookmark.url
                 lmStudioBookmarkIsStale = lmStudioBookmark.isStale
+                print("[AppModel] restored LM Studio bookmark: \(lmStudioBookmark.url.path) stale=\(lmStudioBookmark.isStale)")
+            } else {
+                print("[AppModel] no stored LM Studio bookmark")
             }
 
             if let backupBookmark = try bookmarkStore.loadBookmark(for: .backupRoot) {
                 backupFolderURL = backupBookmark.url
                 backupBookmarkIsStale = backupBookmark.isStale
+                print("[AppModel] restored backup bookmark: \(backupBookmark.url.path) stale=\(backupBookmark.isStale)")
+            } else {
+                print("[AppModel] no stored backup bookmark")
             }
         } catch {
             errorMessage = error.localizedDescription
+            print("[AppModel] bookmark restore failed: \(error.localizedDescription)")
         }
     }
 
     private func saveSelection(_ url: URL, for key: BookmarkKey) {
         do {
             try bookmarkStore.saveBookmark(for: url, as: key)
+            print("[AppModel] saved bookmark for \(key.rawValue): \(url.path)")
             switch key {
             case .lmStudioModels:
                 lmStudioFolderURL = url
@@ -248,10 +263,12 @@ final class AppModel: ObservableObject {
 
     private func evaluateSourceFolder(url: URL?, isStale: Bool) -> SourceAccessState {
         guard let url else {
+            print("[AppModel] LM Studio source not configured")
             return .notConfigured
         }
 
         if isStale {
+            print("[AppModel] LM Studio bookmark stale: \(url.path)")
             return .staleBookmark
         }
 
@@ -260,13 +277,16 @@ final class AppModel: ObservableObject {
             guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
                   isDirectory.boolValue
             else {
+                print("[AppModel] LM Studio folder inaccessible or missing: \(url.path)")
                 return .inaccessible
             }
 
             do {
                 _ = try fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+                print("[AppModel] LM Studio folder ready: \(url.path)")
                 return .ready
             } catch {
+                print("[AppModel] LM Studio contents read failed: \(url.path) error=\(error.localizedDescription)")
                 return .inaccessible
             }
         }
@@ -274,10 +294,12 @@ final class AppModel: ObservableObject {
 
     private func evaluateBackupFolder(url: URL?, isStale: Bool) -> BackupDriveState {
         guard let url else {
+            print("[AppModel] backup root not configured")
             return .notConfigured
         }
 
         if isStale {
+            print("[AppModel] backup bookmark stale: \(url.path)")
             return .staleBookmark
         }
 
@@ -287,31 +309,38 @@ final class AppModel: ObservableObject {
                   isDirectory.boolValue
             else {
                 lastBackupValidationFailure = "The selected backup folder no longer exists."
+                print("[AppModel] backup root offline: \(url.path)")
                 return .offline
             }
 
             do {
                 let values = try url.resourceValues(forKeys: [.volumeIsReadOnlyKey, .isWritableKey])
+                print("[AppModel] backup resource values path=\(url.path) volumeIsReadOnly=\(String(describing: values.volumeIsReadOnly)) isWritable=\(String(describing: values.isWritable))")
                 if values.volumeIsReadOnly == true {
                     lastBackupValidationFailure = "The selected volume is mounted read only."
+                    print("[AppModel] backup root read only due to volume flag")
                     return .readOnly
                 }
 
                 if values.isWritable == true {
                     lastBackupValidationFailure = nil
+                    print("[AppModel] backup root online via writable resource value")
                     return .online
                 }
 
                 guard try canWriteProbeFile(in: url) else {
                     lastBackupValidationFailure = "The app could not write inside the selected backup folder."
+                    print("[AppModel] backup root read only after write probe failed")
                     return .readOnly
                 }
             } catch let error as NSError {
                 lastBackupValidationFailure = error.localizedDescription
+                print("[AppModel] backup validation threw error: \(error.localizedDescription)")
                 return .readOnly
             }
 
             lastBackupValidationFailure = nil
+            print("[AppModel] backup root online after write probe succeeded")
             return .online
         }
     }
@@ -325,8 +354,10 @@ final class AppModel: ObservableObject {
         do {
             try Data("probe".utf8).write(to: probeURL, options: .atomic)
             try fileManager.removeItem(at: probeURL)
+            print("[AppModel] write probe succeeded: \(probeURL.path)")
             return true
         } catch {
+            print("[AppModel] write probe failed: \(probeURL.path) error=\(error.localizedDescription)")
             return false
         }
     }
