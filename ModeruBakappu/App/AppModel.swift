@@ -18,13 +18,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var lmStudioDiscoveryState: LMStudioDiscoveryState = .idle
     @Published private(set) var lmStudioModels: [DiscoveredModel] = []
     @Published private(set) var backupRecords: [String: BackupRecord] = [:]
-    @Published private(set) var suggestedLMStudioFolderURL: URL?
     @Published var errorMessage: String?
 
     private let bookmarkStore: BookmarkStore
     private let backupIndexStore: BackupIndexStore
     private let folderPicker: FolderPicker
-    private let lmStudioSettingsService: LMStudioSettingsService
     private let lmStudioDiscoveryService: LMStudioDiscoveryService
     private let backupCoordinator: BackupCoordinator
     private let fileManager: FileManager
@@ -40,7 +38,6 @@ final class AppModel: ObservableObject {
             bookmarkStore: UserDefaultsBookmarkStore(),
             backupIndexStore: JSONBackupIndexStore(),
             folderPicker: OpenPanelFolderPicker(),
-            lmStudioSettingsService: LMStudioSettingsService(),
             lmStudioDiscoveryService: LMStudioDiscoveryService(),
             backupCoordinator: BackupCoordinator(),
             fileManager: .default
@@ -51,7 +48,6 @@ final class AppModel: ObservableObject {
         bookmarkStore: BookmarkStore,
         backupIndexStore: BackupIndexStore,
         folderPicker: FolderPicker,
-        lmStudioSettingsService: LMStudioSettingsService,
         lmStudioDiscoveryService: LMStudioDiscoveryService,
         backupCoordinator: BackupCoordinator,
         fileManager: FileManager
@@ -59,7 +55,6 @@ final class AppModel: ObservableObject {
         self.bookmarkStore = bookmarkStore
         self.backupIndexStore = backupIndexStore
         self.folderPicker = folderPicker
-        self.lmStudioSettingsService = lmStudioSettingsService
         self.lmStudioDiscoveryService = lmStudioDiscoveryService
         self.backupCoordinator = backupCoordinator
         self.fileManager = fileManager
@@ -72,10 +67,8 @@ final class AppModel: ObservableObject {
     func loadIfNeeded() {
         guard !hasLoaded else { return }
 
-        suggestedLMStudioFolderURL = lmStudioSettingsService.suggestedModelsFolder()
         loadBackupIndex()
         restoreBookmarks()
-        adoptSuggestedLMStudioFolderIfNeeded()
         refreshStatuses()
         hasLoaded = true
     }
@@ -83,18 +76,13 @@ final class AppModel: ObservableObject {
     func selectLMStudioFolder() {
         let picked = folderPicker.pickFolder(
             title: "Choose LM Studio Models Folder",
-            message: "Select the folder that LM Studio uses to store downloaded models.",
+            message: "Choose the LM Studio models folder so the app can access it explicitly.",
             prompt: "Use Folder",
-            startingAt: lmStudioFolderURL ?? suggestedLMStudioFolderURL
+            startingAt: lmStudioFolderURL
         )
 
         guard let picked else { return }
         saveSelection(picked, for: .lmStudioModels)
-    }
-
-    func useSuggestedLMStudioFolder() {
-        guard let suggestedLMStudioFolderURL else { return }
-        saveSelection(suggestedLMStudioFolderURL, for: .lmStudioModels)
     }
 
     func selectBackupFolder() {
@@ -203,15 +191,6 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    private func adoptSuggestedLMStudioFolderIfNeeded() {
-        guard lmStudioFolderURL == nil, let suggestedLMStudioFolderURL else {
-            return
-        }
-
-        lmStudioFolderURL = suggestedLMStudioFolderURL
-        lmStudioBookmarkIsStale = false
     }
 
     private func restoreBookmarks() {

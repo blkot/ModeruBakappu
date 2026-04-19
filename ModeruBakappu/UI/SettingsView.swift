@@ -26,11 +26,6 @@ struct SettingsView: View {
                     Button("Choose LM Studio Folder") {
                         appModel.selectLMStudioFolder()
                     }
-                    if appModel.suggestedLMStudioFolderURL != nil {
-                        Button("Use Suggested Folder") {
-                            appModel.useSuggestedLMStudioFolder()
-                        }
-                    }
                 }
             }
 

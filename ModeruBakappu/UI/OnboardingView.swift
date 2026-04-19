@@ -16,7 +16,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Set Up ModeruBakappu")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
-                    Text("Choose the folders this app is allowed to use before model discovery or backups begin.")
+                    Text("Choose the folders this app is allowed to use before model discovery or backups begin. The app does not inspect other apps' Library data automatically.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
@@ -29,8 +29,8 @@ struct OnboardingView: View {
                     accentColor: color(for: appModel.lmStudioAccessState),
                     primaryActionTitle: appModel.lmStudioFolderURL == nil ? "Choose Folder" : "Change Folder",
                     onPrimaryAction: { appModel.selectLMStudioFolder() },
-                    secondaryActionTitle: appModel.suggestedLMStudioFolderURL == nil ? nil : "Use Suggested Folder",
-                    onSecondaryAction: appModel.suggestedLMStudioFolderURL == nil ? nil : { appModel.useSuggestedLMStudioFolder() }
+                    secondaryActionTitle: nil,
+                    onSecondaryAction: nil as (() -> Void)?
                 )
 
                 FolderStatusCard(
