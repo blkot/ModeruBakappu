@@ -16,7 +16,7 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("ModeruBakappu")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
-                    Text("Startup configuration is ready. This shell tracks folder access now; discovery and backup actions come next.")
+                    Text("Startup configuration is ready. LM Studio discovery now uses the configured source folder while backup actions remain gated on drive availability.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
@@ -45,10 +45,17 @@ struct DashboardView: View {
                     onSecondaryAction: { appModel.refreshStatuses() }
                 )
 
+                ModelsPanel(
+                    discoveryState: appModel.lmStudioDiscoveryState,
+                    models: appModel.lmStudioModels,
+                    backupEnabled: appModel.canAttemptBackup,
+                    onRefresh: { appModel.refreshModelDiscovery() }
+                )
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Next implementation milestone")
                         .font(.headline)
-                    Text("Add LM Studio discovery against the configured folder, then gate backup actions on the backup drive state.")
+                    Text("Implement the backup plan and copy/verification flow, but keep writes disabled until the backup root is online and writable.")
                         .foregroundStyle(.secondary)
                 }
                 .padding(20)

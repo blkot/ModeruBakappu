@@ -15,12 +15,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var backupFolderURL: URL?
     @Published private(set) var lmStudioAccessState: SourceAccessState = .notConfigured
     @Published private(set) var backupDriveState: BackupDriveState = .notConfigured
+    @Published private(set) var lmStudioDiscoveryState: LMStudioDiscoveryState = .idle
+    @Published private(set) var lmStudioModels: [DiscoveredModel] = []
     @Published private(set) var suggestedLMStudioFolderURL: URL?
     @Published var errorMessage: String?
 
     private let bookmarkStore: BookmarkStore
     private let folderPicker: FolderPicker
     private let lmStudioSettingsService: LMStudioSettingsService
+    private let lmStudioDiscoveryService: LMStudioDiscoveryService
     private let fileManager: FileManager
 
     private var lmStudioBookmarkIsStale = false
@@ -31,6 +34,7 @@ final class AppModel: ObservableObject {
             bookmarkStore: UserDefaultsBookmarkStore(),
             folderPicker: OpenPanelFolderPicker(),
             lmStudioSettingsService: LMStudioSettingsService(),
+            lmStudioDiscoveryService: LMStudioDiscoveryService(),
             fileManager: .default
         )
     }
@@ -39,11 +43,13 @@ final class AppModel: ObservableObject {
         bookmarkStore: BookmarkStore,
         folderPicker: FolderPicker,
         lmStudioSettingsService: LMStudioSettingsService,
+        lmStudioDiscoveryService: LMStudioDiscoveryService,
         fileManager: FileManager
     ) {
         self.bookmarkStore = bookmarkStore
         self.folderPicker = folderPicker
         self.lmStudioSettingsService = lmStudioSettingsService
+        self.lmStudioDiscoveryService = lmStudioDiscoveryService
         self.fileManager = fileManager
     }
 
@@ -92,10 +98,38 @@ final class AppModel: ObservableObject {
     func refreshStatuses() {
         lmStudioAccessState = evaluateSourceFolder(url: lmStudioFolderURL, isStale: lmStudioBookmarkIsStale)
         backupDriveState = evaluateBackupFolder(url: backupFolderURL, isStale: backupBookmarkIsStale)
+        refreshModelDiscovery()
     }
 
     func clearError() {
         errorMessage = nil
+    }
+
+    func refreshModelDiscovery() {
+        guard lmStudioAccessState == .ready, let lmStudioFolderURL else {
+            lmStudioModels = []
+            lmStudioDiscoveryState = .unavailable
+            return
+        }
+
+        lmStudioDiscoveryState = .scanning
+
+        let result: Result<[DiscoveredModel], Error> = withScopedAccess(to: lmStudioFolderURL) {
+            Result { try lmStudioDiscoveryService.discoverModels(in: lmStudioFolderURL) }
+        }
+
+        switch result {
+        case let .success(models):
+            lmStudioModels = models
+            lmStudioDiscoveryState = models.isEmpty ? .empty : .ready(count: models.count)
+        case let .failure(error):
+            lmStudioModels = []
+            lmStudioDiscoveryState = .failed(error.localizedDescription)
+        }
+    }
+
+    var canAttemptBackup: Bool {
+        backupDriveState == .online && !lmStudioModels.isEmpty
     }
 
     private func restoreBookmarks() {
@@ -121,6 +155,8 @@ final class AppModel: ObservableObject {
             case .lmStudioModels:
                 lmStudioFolderURL = url
                 lmStudioBookmarkIsStale = false
+                lmStudioModels = []
+                lmStudioDiscoveryState = .idle
             case .backupRoot:
                 backupFolderURL = url
                 backupBookmarkIsStale = false

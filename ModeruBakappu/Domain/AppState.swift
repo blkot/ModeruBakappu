@@ -83,7 +83,70 @@ enum BackupDriveState: Equatable {
     }
 }
 
+enum LMStudioDiscoveryState: Equatable {
+    case idle
+    case unavailable
+    case scanning
+    case ready(count: Int)
+    case empty
+    case failed(String)
+
+    var title: String {
+        switch self {
+        case .idle:
+            return "Not Started"
+        case .unavailable:
+            return "Unavailable"
+        case .scanning:
+            return "Scanning"
+        case let .ready(count):
+            return "\(count) Models"
+        case .empty:
+            return "No Models"
+        case .failed:
+            return "Scan Failed"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .idle:
+            return "Discovery has not run yet."
+        case .unavailable:
+            return "LM Studio discovery is unavailable until the source folder is ready."
+        case .scanning:
+            return "Scanning the selected LM Studio folder."
+        case let .ready(count):
+            return "Discovered \(count) LM Studio models from the configured folder."
+        case .empty:
+            return "No LM Studio models were found in the configured folder."
+        case let .failed(message):
+            return message
+        }
+    }
+}
+
 struct ResolvedBookmark: Equatable {
     let url: URL
     let isStale: Bool
+}
+
+struct DiscoveredModel: Identifiable, Equatable {
+    let id: String
+    let source: String
+    let publisher: String?
+    let displayName: String
+    let folderURL: URL
+    let relativePath: String
+    let sizeBytes: Int64
+    let fileCount: Int
+    let lastModified: Date?
+
+    var sizeDescription: String {
+        ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
+    }
+
+    var fileCountDescription: String {
+        fileCount == 1 ? "1 file" : "\(fileCount) files"
+    }
 }
