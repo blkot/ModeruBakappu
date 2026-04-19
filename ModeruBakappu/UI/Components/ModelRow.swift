@@ -9,7 +9,8 @@ import SwiftUI
 
 struct ModelRow: View {
     let model: DiscoveredModel
-    let backupEnabled: Bool
+    let backupState: ModelBackupState
+    let onBackup: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -41,14 +42,32 @@ struct ModelRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                if let summary = backupState.summary {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(backupStateColor)
+                }
             }
 
             Spacer()
 
-            Button("Backup") {}
-                .disabled(true || !backupEnabled)
-                .help(backupEnabled ? "Backup actions are not implemented yet." : "Backup remains unavailable until the backup drive is online.")
+            Button(backupState.buttonTitle, action: onBackup)
+                .disabled(!backupState.canTriggerBackup)
         }
         .padding(.vertical, 4)
+    }
+
+    private var backupStateColor: Color {
+        switch backupState {
+        case .failed:
+            return .red
+        case .inProgress:
+            return .orange
+        case .backedUp:
+            return .green
+        case .unavailable, .ready:
+            return .secondary
+        }
     }
 }

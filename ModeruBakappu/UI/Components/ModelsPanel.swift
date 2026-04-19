@@ -10,7 +10,8 @@ import SwiftUI
 struct ModelsPanel: View {
     let discoveryState: LMStudioDiscoveryState
     let models: [DiscoveredModel]
-    let backupEnabled: Bool
+    let backupState: (DiscoveredModel) -> ModelBackupState
+    let onBackup: (DiscoveredModel) -> Void
     let onRefresh: () -> Void
 
     var body: some View {
@@ -42,7 +43,11 @@ struct ModelsPanel: View {
             case .ready:
                 VStack(spacing: 0) {
                     ForEach(models) { model in
-                        ModelRow(model: model, backupEnabled: backupEnabled)
+                        ModelRow(
+                            model: model,
+                            backupState: backupState(model),
+                            onBackup: { onBackup(model) }
+                        )
                         if model.id != models.last?.id {
                             Divider()
                         }

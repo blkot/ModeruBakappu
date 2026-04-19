@@ -17,39 +17,50 @@ final class AppModel: ObservableObject {
     @Published private(set) var backupDriveState: BackupDriveState = .notConfigured
     @Published private(set) var lmStudioDiscoveryState: LMStudioDiscoveryState = .idle
     @Published private(set) var lmStudioModels: [DiscoveredModel] = []
+    @Published private(set) var backupRecords: [String: BackupRecord] = [:]
     @Published private(set) var suggestedLMStudioFolderURL: URL?
     @Published var errorMessage: String?
 
     private let bookmarkStore: BookmarkStore
+    private let backupIndexStore: BackupIndexStore
     private let folderPicker: FolderPicker
     private let lmStudioSettingsService: LMStudioSettingsService
     private let lmStudioDiscoveryService: LMStudioDiscoveryService
+    private let backupCoordinator: BackupCoordinator
     private let fileManager: FileManager
 
     private var lmStudioBookmarkIsStale = false
     private var backupBookmarkIsStale = false
+    private var activeBackupIDs: Set<String> = []
+    private var backupFailures: [String: String] = [:]
 
     convenience init() {
         self.init(
             bookmarkStore: UserDefaultsBookmarkStore(),
+            backupIndexStore: JSONBackupIndexStore(),
             folderPicker: OpenPanelFolderPicker(),
             lmStudioSettingsService: LMStudioSettingsService(),
             lmStudioDiscoveryService: LMStudioDiscoveryService(),
+            backupCoordinator: BackupCoordinator(),
             fileManager: .default
         )
     }
 
     init(
         bookmarkStore: BookmarkStore,
+        backupIndexStore: BackupIndexStore,
         folderPicker: FolderPicker,
         lmStudioSettingsService: LMStudioSettingsService,
         lmStudioDiscoveryService: LMStudioDiscoveryService,
+        backupCoordinator: BackupCoordinator,
         fileManager: FileManager
     ) {
         self.bookmarkStore = bookmarkStore
+        self.backupIndexStore = backupIndexStore
         self.folderPicker = folderPicker
         self.lmStudioSettingsService = lmStudioSettingsService
         self.lmStudioDiscoveryService = lmStudioDiscoveryService
+        self.backupCoordinator = backupCoordinator
         self.fileManager = fileManager
     }
 
@@ -61,6 +72,7 @@ final class AppModel: ObservableObject {
         guard !hasLoaded else { return }
 
         suggestedLMStudioFolderURL = lmStudioSettingsService.suggestedModelsFolder()
+        loadBackupIndex()
         restoreBookmarks()
         refreshStatuses()
         hasLoaded = true
@@ -105,6 +117,57 @@ final class AppModel: ObservableObject {
         errorMessage = nil
     }
 
+    func backupState(for model: DiscoveredModel) -> ModelBackupState {
+        if let message = backupFailures[model.id] {
+            return .failed(message)
+        }
+
+        if activeBackupIDs.contains(model.id) {
+            return .inProgress
+        }
+
+        if let record = backupRecords[model.id] {
+            return .backedUp(record)
+        }
+
+        guard backupDriveState == .online else {
+            return .unavailable
+        }
+
+        return .ready
+    }
+
+    func backup(model: DiscoveredModel) {
+        guard backupState(for: model).canTriggerBackup, let backupFolderURL else {
+            return
+        }
+
+        activeBackupIDs.insert(model.id)
+        backupFailures[model.id] = nil
+
+        let backupCoordinator = self.backupCoordinator
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let sourceAccess = model.folderURL.startAccessingSecurityScopedResource()
+            let backupAccess = backupFolderURL.startAccessingSecurityScopedResource()
+
+            defer {
+                if sourceAccess {
+                    model.folderURL.stopAccessingSecurityScopedResource()
+                }
+                if backupAccess {
+                    backupFolderURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let result = Result { try backupCoordinator.backup(model: model, to: backupFolderURL) }
+
+            Task { @MainActor in
+                self.completeBackup(result, for: model.id)
+            }
+        }
+    }
+
     func refreshModelDiscovery() {
         guard lmStudioAccessState == .ready, let lmStudioFolderURL else {
             lmStudioModels = []
@@ -130,6 +193,14 @@ final class AppModel: ObservableObject {
 
     var canAttemptBackup: Bool {
         backupDriveState == .online && !lmStudioModels.isEmpty
+    }
+
+    private func loadBackupIndex() {
+        do {
+            backupRecords = try backupIndexStore.loadIndex()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func restoreBookmarks() {
@@ -163,6 +234,24 @@ final class AppModel: ObservableObject {
             }
             refreshStatuses()
         } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func completeBackup(_ result: Result<BackupRecord, Error>, for modelID: String) {
+        activeBackupIDs.remove(modelID)
+
+        switch result {
+        case let .success(record):
+            backupRecords[modelID] = record
+            backupFailures[modelID] = nil
+            do {
+                try backupIndexStore.saveIndex(backupRecords)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case let .failure(error):
+            backupFailures[modelID] = error.localizedDescription
             errorMessage = error.localizedDescription
         }
     }

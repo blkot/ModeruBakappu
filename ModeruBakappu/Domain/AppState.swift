@@ -126,6 +126,51 @@ enum LMStudioDiscoveryState: Equatable {
     }
 }
 
+enum ModelBackupState: Equatable {
+    case unavailable
+    case ready
+    case inProgress
+    case backedUp(BackupRecord)
+    case failed(String)
+
+    var buttonTitle: String {
+        switch self {
+        case .unavailable, .ready:
+            return "Backup"
+        case .inProgress:
+            return "Backing Up…"
+        case .backedUp:
+            return "Backed Up"
+        case .failed:
+            return "Retry Backup"
+        }
+    }
+
+    var summary: String? {
+        switch self {
+        case .unavailable:
+            return "Backup remains unavailable until the backup root is online."
+        case .ready:
+            return nil
+        case .inProgress:
+            return "Copying and verifying backup contents."
+        case let .backedUp(record):
+            return "Verified backup created \(record.backedUpAt.formatted(date: .abbreviated, time: .shortened))."
+        case let .failed(message):
+            return message
+        }
+    }
+
+    var canTriggerBackup: Bool {
+        switch self {
+        case .ready, .failed:
+            return true
+        case .unavailable, .inProgress, .backedUp:
+            return false
+        }
+    }
+}
+
 struct ResolvedBookmark: Equatable {
     let url: URL
     let isStale: Bool
@@ -149,4 +194,17 @@ struct DiscoveredModel: Identifiable, Equatable {
     var fileCountDescription: String {
         fileCount == 1 ? "1 file" : "\(fileCount) files"
     }
+}
+
+struct BackupRecord: Codable, Equatable, Identifiable {
+    let modelID: String
+    let source: String
+    let displayName: String
+    let relativePath: String
+    let backupRelativePath: String
+    let sizeBytes: Int64
+    let fileCount: Int
+    let backedUpAt: Date
+
+    var id: String { modelID }
 }

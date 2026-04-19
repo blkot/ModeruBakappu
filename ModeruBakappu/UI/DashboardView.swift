@@ -48,7 +48,12 @@ struct DashboardView: View {
                 ModelsPanel(
                     discoveryState: appModel.lmStudioDiscoveryState,
                     models: appModel.lmStudioModels,
-                    backupEnabled: appModel.canAttemptBackup,
+                    backupState: { model in
+                        appModel.backupState(for: model)
+                    },
+                    onBackup: { model in
+                        appModel.backup(model: model)
+                    },
                     onRefresh: { appModel.refreshModelDiscovery() }
                 )
 
