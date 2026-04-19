@@ -74,6 +74,7 @@ final class AppModel: ObservableObject {
         suggestedLMStudioFolderURL = lmStudioSettingsService.suggestedModelsFolder()
         loadBackupIndex()
         restoreBookmarks()
+        adoptSuggestedLMStudioFolderIfNeeded()
         refreshStatuses()
         hasLoaded = true
     }
@@ -203,6 +204,15 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func adoptSuggestedLMStudioFolderIfNeeded() {
+        guard lmStudioFolderURL == nil, let suggestedLMStudioFolderURL else {
+            return
+        }
+
+        lmStudioFolderURL = suggestedLMStudioFolderURL
+        lmStudioBookmarkIsStale = false
+    }
+
     private func restoreBookmarks() {
         do {
             if let lmStudioBookmark = try bookmarkStore.loadBookmark(for: .lmStudioModels) {
@@ -299,11 +309,30 @@ final class AppModel: ObservableObject {
                 return .offline
             }
 
-            guard fileManager.isWritableFile(atPath: url.path) else {
+            do {
+                guard try canCreateProbeDirectory(in: url) else {
+                    return .readOnly
+                }
+            } catch {
                 return .readOnly
             }
 
             return .online
+        }
+    }
+
+    private func canCreateProbeDirectory(in directoryURL: URL) throws -> Bool {
+        let probeURL = directoryURL.appendingPathComponent(
+            ".moderubakappu-write-probe-\(UUID().uuidString)",
+            isDirectory: true
+        )
+
+        do {
+            try fileManager.createDirectory(at: probeURL, withIntermediateDirectories: false)
+            try fileManager.removeItem(at: probeURL)
+            return true
+        } catch {
+            return false
         }
     }
 
