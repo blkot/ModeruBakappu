@@ -37,7 +37,7 @@ struct OnboardingView: View {
                     title: "Backup Root",
                     path: appModel.backupFolderURL?.path,
                     stateTitle: appModel.backupDriveState.title,
-                    summary: appModel.backupDriveState.summary,
+                    summary: appModel.backupDriveSummary,
                     accentColor: color(for: appModel.backupDriveState),
                     primaryActionTitle: appModel.backupFolderURL == nil ? "Choose Backup Root" : "Change Backup Root",
                     onPrimaryAction: { appModel.selectBackupFolder() },

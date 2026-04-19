@@ -355,13 +355,23 @@ final class AppModel: ObservableObject {
             isDirectory: false
         )
 
+        let created = fileManager.createFile(
+            atPath: probeURL.path,
+            contents: Data("probe".utf8),
+            attributes: nil
+        )
+
+        guard created else {
+            print("[AppModel] write probe failed to create file: \(probeURL.path)")
+            return false
+        }
+
         do {
-            try Data("probe".utf8).write(to: probeURL, options: .atomic)
             try fileManager.removeItem(at: probeURL)
             print("[AppModel] write probe succeeded: \(probeURL.path)")
             return true
         } catch {
-            print("[AppModel] write probe failed: \(probeURL.path) error=\(error.localizedDescription)")
+            print("[AppModel] write probe cleanup failed: \(probeURL.path) error=\(error.localizedDescription)")
             return false
         }
     }
