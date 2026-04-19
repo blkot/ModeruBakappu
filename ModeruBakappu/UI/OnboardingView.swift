@@ -16,7 +16,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Set Up ModeruBakappu")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
-                    Text("Choose the folders this app is allowed to use before model discovery or backups begin. The app does not inspect other apps' Library data automatically.")
+                    Text("The app will try to detect supported model folders automatically. You can still override any detected source or choose folders manually before backups begin.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
@@ -48,7 +48,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("What happens next")
                         .font(.headline)
-                    Text("Once both folders are configured, the app will switch to the main shell. Model discovery and backup execution will be added in the next phase.")
+                    Text("Once both folders are configured, the app will switch to the main shell. Source detection stays editable, and backup execution remains gated on the backup drive state.")
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 4)

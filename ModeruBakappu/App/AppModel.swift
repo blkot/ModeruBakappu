@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     private let bookmarkStore: BookmarkStore
     private let backupIndexStore: BackupIndexStore
     private let folderPicker: FolderPicker
+    private let lmStudioLocationService: LMStudioLocationService
     private let lmStudioDiscoveryService: LMStudioDiscoveryService
     private let backupCoordinator: BackupCoordinator
     private let fileManager: FileManager
@@ -38,6 +39,7 @@ final class AppModel: ObservableObject {
             bookmarkStore: UserDefaultsBookmarkStore(),
             backupIndexStore: JSONBackupIndexStore(),
             folderPicker: OpenPanelFolderPicker(),
+            lmStudioLocationService: LMStudioLocationService(),
             lmStudioDiscoveryService: LMStudioDiscoveryService(),
             backupCoordinator: BackupCoordinator(),
             fileManager: .default
@@ -48,6 +50,7 @@ final class AppModel: ObservableObject {
         bookmarkStore: BookmarkStore,
         backupIndexStore: BackupIndexStore,
         folderPicker: FolderPicker,
+        lmStudioLocationService: LMStudioLocationService,
         lmStudioDiscoveryService: LMStudioDiscoveryService,
         backupCoordinator: BackupCoordinator,
         fileManager: FileManager
@@ -55,6 +58,7 @@ final class AppModel: ObservableObject {
         self.bookmarkStore = bookmarkStore
         self.backupIndexStore = backupIndexStore
         self.folderPicker = folderPicker
+        self.lmStudioLocationService = lmStudioLocationService
         self.lmStudioDiscoveryService = lmStudioDiscoveryService
         self.backupCoordinator = backupCoordinator
         self.fileManager = fileManager
@@ -70,6 +74,7 @@ final class AppModel: ObservableObject {
         print("[AppModel] loadIfNeeded")
         loadBackupIndex()
         restoreBookmarks()
+        autoDetectLMStudioFolderIfNeeded()
         refreshStatuses()
         hasLoaded = true
     }
@@ -225,6 +230,18 @@ final class AppModel: ObservableObject {
             errorMessage = error.localizedDescription
             print("[AppModel] bookmark restore failed: \(error.localizedDescription)")
         }
+    }
+
+    private func autoDetectLMStudioFolderIfNeeded() {
+        guard lmStudioFolderURL == nil else { return }
+
+        guard let detectedURL = lmStudioLocationService.detectModelsFolder() else {
+            print("[AppModel] no LM Studio folder auto-detected")
+            return
+        }
+
+        print("[AppModel] auto-detected LM Studio folder: \(detectedURL.path)")
+        saveSelection(detectedURL, for: .lmStudioModels)
     }
 
     private func saveSelection(_ url: URL, for key: BookmarkKey) {
