@@ -24,9 +24,14 @@ final class LMStudioSettingsService {
             }
 
             let url = URL(fileURLWithPath: path, isDirectory: true)
-            var isDirectory: ObjCBool = false
-            if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+            if isExistingDirectory(url) {
                 return url
+            }
+        }
+
+        for fallback in fallbackCandidates() {
+            if isExistingDirectory(fallback) {
+                return fallback
             }
         }
 
@@ -43,6 +48,27 @@ final class LMStudioSettingsService {
             supportDirectory.appendingPathComponent("settings.json", isDirectory: false),
             supportDirectory.appendingPathComponent("settings.json.lmstudio-temp", isDirectory: false),
         ]
+    }
+
+    private func fallbackCandidates() -> [URL] {
+        let home = fileManager.homeDirectoryForCurrentUser
+
+        return [
+            home.appendingPathComponent(".cache", isDirectory: true)
+                .appendingPathComponent("lm-studio", isDirectory: true)
+                .appendingPathComponent("models", isDirectory: true),
+            home.appendingPathComponent(".lmstudio", isDirectory: true)
+                .appendingPathComponent("models", isDirectory: true),
+            home.appendingPathComponent("Library", isDirectory: true)
+                .appendingPathComponent("Application Support", isDirectory: true)
+                .appendingPathComponent("LM Studio", isDirectory: true)
+                .appendingPathComponent("Models", isDirectory: true),
+        ]
+    }
+
+    private func isExistingDirectory(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 }
 

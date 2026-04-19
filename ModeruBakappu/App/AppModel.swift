@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
     private var backupBookmarkIsStale = false
     private var activeBackupIDs: Set<String> = []
     private var backupFailures: [String: String] = [:]
+    private var lastBackupValidationFailure: String?
 
     convenience init() {
         self.init(
@@ -306,29 +307,44 @@ final class AppModel: ObservableObject {
             guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
                   isDirectory.boolValue
             else {
+                lastBackupValidationFailure = "The selected backup folder no longer exists."
                 return .offline
             }
 
             do {
-                guard try canCreateProbeDirectory(in: url) else {
+                let values = try url.resourceValues(forKeys: [.volumeIsReadOnlyKey, .isWritableKey])
+                if values.volumeIsReadOnly == true {
+                    lastBackupValidationFailure = "The selected volume is mounted read only."
                     return .readOnly
                 }
-            } catch {
+
+                if values.isWritable == true {
+                    lastBackupValidationFailure = nil
+                    return .online
+                }
+
+                guard try canWriteProbeFile(in: url) else {
+                    lastBackupValidationFailure = "The app could not write inside the selected backup folder."
+                    return .readOnly
+                }
+            } catch let error as NSError {
+                lastBackupValidationFailure = error.localizedDescription
                 return .readOnly
             }
 
+            lastBackupValidationFailure = nil
             return .online
         }
     }
 
-    private func canCreateProbeDirectory(in directoryURL: URL) throws -> Bool {
+    private func canWriteProbeFile(in directoryURL: URL) throws -> Bool {
         let probeURL = directoryURL.appendingPathComponent(
-            ".moderubakappu-write-probe-\(UUID().uuidString)",
-            isDirectory: true
+            ".moderubakappu-write-probe-\(UUID().uuidString).tmp",
+            isDirectory: false
         )
 
         do {
-            try fileManager.createDirectory(at: probeURL, withIntermediateDirectories: false)
+            try Data("probe".utf8).write(to: probeURL, options: .atomic)
             try fileManager.removeItem(at: probeURL)
             return true
         } catch {
