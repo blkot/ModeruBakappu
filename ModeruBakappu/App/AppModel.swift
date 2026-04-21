@@ -79,7 +79,7 @@ final class AppModel: ObservableObject {
         print("[AppModel] loadIfNeeded")
         loadBackupIndex()
         restoreBookmarks()
-        autoDetectLMStudioFolderIfNeeded()
+        autoDetectSourceFolderIfNeeded()
         refreshStatuses()
         hasLoaded = true
     }
@@ -239,8 +239,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func autoDetectLMStudioFolderIfNeeded() {
-        guard lmStudioFolderURL == nil else { return }
+    private func autoDetectSourceFolderIfNeeded() {
+        guard lmStudioFolderURL == nil else {
+            print("[AppModel] source auto-detect skipped because a source folder is already configured")
+            return
+        }
 
         guard let detectedSource = modelSourceLocator.detectPreferredSource() else {
             print("[AppModel] no model source auto-detected")

@@ -55,21 +55,8 @@ final class ModelSourceLocator {
 
     private func detectOMLX() -> DetectedSourceConfiguration? {
         let homeDirectory = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-        let settingsURL = homeDirectory.appendingPathComponent(".omlx/settings.json", isDirectory: false)
-
-        if let configuredPath = loadOMLXConfiguredPath(from: settingsURL) {
-            let configuredURL = URL(fileURLWithPath: configuredPath, isDirectory: true).standardizedFileURL
-            let isValid = isLikelyModelsRoot(configuredURL)
-            print("[ModelSourceLocator] oMLX settings candidate=\(configuredURL.path) valid=\(isValid)")
-            if isValid {
-                return DetectedSourceConfiguration(provider: .omlx, folderURL: configuredURL)
-            }
-        } else {
-            print("[ModelSourceLocator] no usable oMLX settings path at \(settingsURL.path)")
-        }
-
         let fallback = homeDirectory.appendingPathComponent(".omlx/models", isDirectory: true)
-        print("[ModelSourceLocator] checking oMLX fallback candidate:")
+        print("[ModelSourceLocator] checking oMLX models root:")
         return firstValidCandidate(in: [fallback], provider: .omlx)
     }
 
@@ -81,26 +68,6 @@ final class ModelSourceLocator {
                 return DetectedSourceConfiguration(provider: provider, folderURL: candidate)
             }
         }
-        return nil
-    }
-
-    private func loadOMLXConfiguredPath(from settingsURL: URL) -> String? {
-        guard let data = try? Data(contentsOf: settingsURL) else {
-            return nil
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-
-        if let path = json["model_dir"] as? String, !path.isEmpty {
-            return path
-        }
-
-        if let path = json["modelDir"] as? String, !path.isEmpty {
-            return path
-        }
-
         return nil
     }
 
