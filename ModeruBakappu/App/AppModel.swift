@@ -11,13 +11,9 @@ import Foundation
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var hasLoaded = false
-    @Published private(set) var sourceProvider: ModelProvider = .lmStudio
-    @Published private(set) var lmStudioFolderURL: URL?
+    @Published private(set) var sourceConfigurations: [ModelSourceConfiguration]
     @Published private(set) var backupFolderURL: URL?
-    @Published private(set) var lmStudioAccessState: SourceAccessState = .notConfigured
     @Published private(set) var backupDriveState: BackupDriveState = .notConfigured
-    @Published private(set) var lmStudioDiscoveryState: LMStudioDiscoveryState = .idle
-    @Published private(set) var lmStudioModels: [DiscoveredModel] = []
     @Published private(set) var backupRecords: [String: BackupRecord] = [:]
     @Published var errorMessage: String?
 
@@ -25,15 +21,16 @@ final class AppModel: ObservableObject {
     private let backupIndexStore: BackupIndexStore
     private let folderPicker: FolderPicker
     private let modelSourceLocator: ModelSourceLocator
-    private let lmStudioDiscoveryService: LMStudioDiscoveryService
+    private let modelDiscoveryService: LMStudioDiscoveryService
     private let backupCoordinator: BackupCoordinator
     private let fileManager: FileManager
 
-    private var lmStudioBookmarkIsStale = false
     private var backupBookmarkIsStale = false
     private var activeBackupIDs: Set<String> = []
     private var backupFailures: [String: String] = [:]
     private var lastBackupValidationFailure: String?
+
+    private static let supportedProviders: [ModelProvider] = [.lmStudio, .omlx]
 
     convenience init() {
         self.init(
@@ -41,7 +38,7 @@ final class AppModel: ObservableObject {
             backupIndexStore: JSONBackupIndexStore(),
             folderPicker: OpenPanelFolderPicker(),
             modelSourceLocator: ModelSourceLocator(),
-            lmStudioDiscoveryService: LMStudioDiscoveryService(),
+            modelDiscoveryService: LMStudioDiscoveryService(),
             backupCoordinator: BackupCoordinator(),
             fileManager: .default
         )
@@ -52,7 +49,7 @@ final class AppModel: ObservableObject {
         backupIndexStore: BackupIndexStore,
         folderPicker: FolderPicker,
         modelSourceLocator: ModelSourceLocator,
-        lmStudioDiscoveryService: LMStudioDiscoveryService,
+        modelDiscoveryService: LMStudioDiscoveryService,
         backupCoordinator: BackupCoordinator,
         fileManager: FileManager
     ) {
@@ -60,17 +57,35 @@ final class AppModel: ObservableObject {
         self.backupIndexStore = backupIndexStore
         self.folderPicker = folderPicker
         self.modelSourceLocator = modelSourceLocator
-        self.lmStudioDiscoveryService = lmStudioDiscoveryService
+        self.modelDiscoveryService = modelDiscoveryService
         self.backupCoordinator = backupCoordinator
         self.fileManager = fileManager
+        self.sourceConfigurations = Self.supportedProviders.map { provider in
+            ModelSourceConfiguration(
+                provider: provider,
+                folderURL: nil,
+                accessState: .notConfigured,
+                discoveryState: .idle,
+                models: [],
+                bookmarkIsStale: false
+            )
+        }
     }
 
     var hasMinimumConfiguration: Bool {
-        lmStudioFolderURL != nil && backupFolderURL != nil
+        backupFolderURL != nil && sourceConfigurations.contains { $0.folderURL != nil }
     }
 
-    var sourceDisplayName: String {
-        sourceProvider.displayName
+    var configuredSourceCount: Int {
+        sourceConfigurations.filter { $0.folderURL != nil }.count
+    }
+
+    var discoveredModelCount: Int {
+        sourceConfigurations.reduce(0) { $0 + $1.models.count }
+    }
+
+    var backupDriveSummary: String {
+        lastBackupValidationFailure ?? backupDriveState.summary
     }
 
     func loadIfNeeded() {
@@ -79,23 +94,22 @@ final class AppModel: ObservableObject {
         print("[AppModel] loadIfNeeded")
         loadBackupIndex()
         restoreBookmarks()
-        autoDetectSourceFolderIfNeeded()
+        autoDetectSourceFolders()
         refreshStatuses()
         hasLoaded = true
     }
 
-    func selectLMStudioFolder() {
+    func selectSourceFolder(for provider: ModelProvider) {
         let picked = folderPicker.pickFolder(
-            title: "Choose Models Folder",
-            message: "Choose the models folder for the detected provider, or override it with a custom source.",
+            title: "Choose \(provider.displayName) Models Folder",
+            message: "Choose the folder where \(provider.displayName) stores local models.",
             prompt: "Use Folder",
-            startingAt: lmStudioFolderURL
+            startingAt: configuration(for: provider)?.folderURL
         )
 
         guard let picked else { return }
-        sourceProvider = modelSourceLocator.inferProvider(for: picked)
-        print("[AppModel] selected source folder provider=\(sourceProvider.displayName) path=\(picked.path)")
-        saveSelection(picked, for: .lmStudioModels)
+        print("[AppModel] selected source folder provider=\(provider.displayName) path=\(picked.path)")
+        saveSourceSelection(picked, for: provider)
     }
 
     func selectBackupFolder() {
@@ -108,15 +122,51 @@ final class AppModel: ObservableObject {
 
         guard let picked else { return }
         print("[AppModel] selected backup root: \(picked.path)")
-        saveSelection(picked, for: .backupRoot)
+        saveBackupSelection(picked)
     }
 
     func refreshStatuses() {
         print("[AppModel] refreshStatuses")
-        lmStudioAccessState = evaluateSourceFolder(url: lmStudioFolderURL, isStale: lmStudioBookmarkIsStale)
+        for index in sourceConfigurations.indices {
+            let configuration = sourceConfigurations[index]
+            let state = evaluateSourceFolder(
+                url: configuration.folderURL,
+                isStale: configuration.bookmarkIsStale,
+                provider: configuration.provider
+            )
+            sourceConfigurations[index].accessState = state
+        }
         backupDriveState = evaluateBackupFolder(url: backupFolderURL, isStale: backupBookmarkIsStale)
         refreshModelDiscovery()
-        print("[AppModel] sourceState=\(lmStudioAccessState.title) backupState=\(backupDriveState.title)")
+        print("[AppModel] configuredSources=\(configuredSourceCount) backupState=\(backupDriveState.title)")
+    }
+
+    func refreshModelDiscovery() {
+        for index in sourceConfigurations.indices {
+            let configuration = sourceConfigurations[index]
+            guard configuration.accessState == .ready, let folderURL = configuration.folderURL else {
+                sourceConfigurations[index].models = []
+                sourceConfigurations[index].discoveryState = .unavailable
+                continue
+            }
+
+            sourceConfigurations[index].discoveryState = .scanning
+
+            let result: Result<[DiscoveredModel], Error> = withScopedAccess(to: folderURL) {
+                Result {
+                    try modelDiscoveryService.discoverModels(in: folderURL, source: configuration.provider)
+                }
+            }
+
+            switch result {
+            case let .success(models):
+                sourceConfigurations[index].models = models
+                sourceConfigurations[index].discoveryState = models.isEmpty ? .empty : .ready(count: models.count)
+            case let .failure(error):
+                sourceConfigurations[index].models = []
+                sourceConfigurations[index].discoveryState = .failed(error.localizedDescription)
+            }
+        }
     }
 
     func clearError() {
@@ -174,35 +224,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshModelDiscovery() {
-        guard lmStudioAccessState == .ready, let lmStudioFolderURL else {
-            lmStudioModels = []
-            lmStudioDiscoveryState = .unavailable
-            return
-        }
-
-        lmStudioDiscoveryState = .scanning
-
-        let result: Result<[DiscoveredModel], Error> = withScopedAccess(to: lmStudioFolderURL) {
-            Result { try lmStudioDiscoveryService.discoverModels(in: lmStudioFolderURL, source: sourceProvider) }
-        }
-
-        switch result {
-        case let .success(models):
-            lmStudioModels = models
-            lmStudioDiscoveryState = models.isEmpty ? .empty : .ready(count: models.count)
-        case let .failure(error):
-            lmStudioModels = []
-            lmStudioDiscoveryState = .failed(error.localizedDescription)
-        }
+    private func configuration(for provider: ModelProvider) -> ModelSourceConfiguration? {
+        sourceConfigurations.first { $0.provider == provider }
     }
 
-    var canAttemptBackup: Bool {
-        backupDriveState == .online && !lmStudioModels.isEmpty
-    }
-
-    var backupDriveSummary: String {
-        lastBackupValidationFailure ?? backupDriveState.summary
+    private func updateSource(_ provider: ModelProvider, _ update: (inout ModelSourceConfiguration) -> Void) {
+        guard let index = sourceConfigurations.firstIndex(where: { $0.provider == provider }) else { return }
+        update(&sourceConfigurations[index])
     }
 
     private func loadBackupIndex() {
@@ -217,13 +245,17 @@ final class AppModel: ObservableObject {
 
     private func restoreBookmarks() {
         do {
-            if let lmStudioBookmark = try bookmarkStore.loadBookmark(for: .lmStudioModels) {
-                lmStudioFolderURL = lmStudioBookmark.url
-                sourceProvider = modelSourceLocator.inferProvider(for: lmStudioBookmark.url)
-                lmStudioBookmarkIsStale = lmStudioBookmark.isStale
-                print("[AppModel] restored source bookmark provider=\(sourceProvider.displayName) path=\(lmStudioBookmark.url.path) stale=\(lmStudioBookmark.isStale)")
-            } else {
-                print("[AppModel] no stored source bookmark")
+            for provider in Self.supportedProviders {
+                guard let key = provider.bookmarkKey else { continue }
+                if let bookmark = try bookmarkStore.loadBookmark(for: key) {
+                    updateSource(provider) { configuration in
+                        configuration.folderURL = bookmark.url
+                        configuration.bookmarkIsStale = bookmark.isStale
+                    }
+                    print("[AppModel] restored source bookmark provider=\(provider.displayName) path=\(bookmark.url.path) stale=\(bookmark.isStale)")
+                } else {
+                    print("[AppModel] no stored source bookmark provider=\(provider.displayName)")
+                }
             }
 
             if let backupBookmark = try bookmarkStore.loadBookmark(for: .backupRoot) {
@@ -239,36 +271,51 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func autoDetectSourceFolderIfNeeded() {
-        guard lmStudioFolderURL == nil else {
-            print("[AppModel] source auto-detect skipped because a source folder is already configured")
+    private func autoDetectSourceFolders() {
+        let detectedSources = modelSourceLocator.detectSources()
+        guard !detectedSources.isEmpty else {
+            print("[AppModel] no model sources auto-detected")
             return
         }
 
-        guard let detectedSource = modelSourceLocator.detectPreferredSource() else {
-            print("[AppModel] no model source auto-detected")
-            return
-        }
+        for detectedSource in detectedSources {
+            guard configuration(for: detectedSource.provider)?.folderURL == nil else {
+                print("[AppModel] source auto-detect skipped provider=\(detectedSource.provider.displayName) because it is already configured")
+                continue
+            }
 
-        sourceProvider = detectedSource.provider
-        print("[AppModel] auto-detected source provider=\(detectedSource.provider.displayName) path=\(detectedSource.folderURL.path)")
-        saveSelection(detectedSource.folderURL, for: .lmStudioModels)
+            print("[AppModel] auto-detected source provider=\(detectedSource.provider.displayName) path=\(detectedSource.folderURL.path)")
+            saveSourceSelection(detectedSource.folderURL, for: detectedSource.provider, refreshAfterSave: false)
+        }
     }
 
-    private func saveSelection(_ url: URL, for key: BookmarkKey) {
+    private func saveSourceSelection(_ url: URL, for provider: ModelProvider, refreshAfterSave: Bool = true) {
+        guard let key = provider.bookmarkKey else { return }
+
         do {
             try bookmarkStore.saveBookmark(for: url, as: key)
-            print("[AppModel] saved bookmark for \(key.rawValue): \(url.path)")
-            switch key {
-            case .lmStudioModels:
-                lmStudioFolderURL = url
-                lmStudioBookmarkIsStale = false
-                lmStudioModels = []
-                lmStudioDiscoveryState = .idle
-            case .backupRoot:
-                backupFolderURL = url
-                backupBookmarkIsStale = false
+            print("[AppModel] saved source bookmark provider=\(provider.displayName) path=\(url.path)")
+            updateSource(provider) { configuration in
+                configuration.folderURL = url
+                configuration.bookmarkIsStale = false
+                configuration.models = []
+                configuration.discoveryState = .idle
             }
+            if refreshAfterSave {
+                refreshStatuses()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func saveBackupSelection(_ url: URL) {
+        do {
+            try bookmarkStore.saveBookmark(for: url, as: .backupRoot)
+            try ensureBackupRootMarker(in: url)
+            backupFolderURL = url
+            backupBookmarkIsStale = false
+            print("[AppModel] saved backup bookmark: \(url.path)")
             refreshStatuses()
         } catch {
             errorMessage = error.localizedDescription
@@ -293,14 +340,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func evaluateSourceFolder(url: URL?, isStale: Bool) -> SourceAccessState {
+    private func evaluateSourceFolder(url: URL?, isStale: Bool, provider: ModelProvider) -> SourceAccessState {
         guard let url else {
-            print("[AppModel] LM Studio source not configured")
+            print("[AppModel] source not configured provider=\(provider.displayName)")
             return .notConfigured
         }
 
         if isStale {
-            print("[AppModel] LM Studio bookmark stale: \(url.path)")
+            print("[AppModel] source bookmark stale provider=\(provider.displayName) path=\(url.path)")
             return .staleBookmark
         }
 
@@ -309,16 +356,16 @@ final class AppModel: ObservableObject {
             guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
                   isDirectory.boolValue
             else {
-                print("[AppModel] LM Studio folder inaccessible or missing: \(url.path)")
+                print("[AppModel] source folder inaccessible or missing provider=\(provider.displayName) path=\(url.path)")
                 return .inaccessible
             }
 
             do {
                 _ = try fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
-                print("[AppModel] LM Studio folder ready: \(url.path)")
+                print("[AppModel] source folder ready provider=\(provider.displayName) path=\(url.path)")
                 return .ready
             } catch {
-                print("[AppModel] LM Studio contents read failed: \(url.path) error=\(error.localizedDescription)")
+                print("[AppModel] source contents read failed provider=\(provider.displayName) path=\(url.path) error=\(error.localizedDescription)")
                 return .inaccessible
             }
         }
@@ -354,17 +401,15 @@ final class AppModel: ObservableObject {
                     return .readOnly
                 }
 
-                if values.isWritable == true {
-                    lastBackupValidationFailure = nil
-                    print("[AppModel] backup root online via writable resource value")
-                    return .online
+                if values.isWritable != true {
+                    guard try canWriteProbeFile(in: url) else {
+                        lastBackupValidationFailure = "The app could not write inside the selected backup folder."
+                        print("[AppModel] backup root permission denied after write probe failed")
+                        return .permissionDenied
+                    }
                 }
 
-                guard try canWriteProbeFile(in: url) else {
-                    lastBackupValidationFailure = "The app could not write inside the selected backup folder."
-                    print("[AppModel] backup root read only after write probe failed")
-                    return .permissionDenied
-                }
+                try ensureBackupRootMarker(in: url)
             } catch let error as NSError {
                 lastBackupValidationFailure = error.localizedDescription
                 print("[AppModel] backup validation threw error: \(error.localizedDescription)")
@@ -372,9 +417,31 @@ final class AppModel: ObservableObject {
             }
 
             lastBackupValidationFailure = nil
-            print("[AppModel] backup root online after write probe succeeded")
+            print("[AppModel] backup root online")
             return .online
         }
+    }
+
+    private func ensureBackupRootMarker(in directoryURL: URL) throws {
+        let markerURL = directoryURL.appendingPathComponent(".moderubakappu-backup.json", isDirectory: false)
+        if fileManager.fileExists(atPath: markerURL.path) {
+            _ = try Data(contentsOf: markerURL)
+            print("[AppModel] backup marker present: \(markerURL.path)")
+            return
+        }
+
+        let marker = BackupRootMarker(
+            schemaVersion: 1,
+            backupRootID: UUID(),
+            appName: "ModeruBakappu",
+            createdAt: .now
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(marker)
+        try data.write(to: markerURL, options: .atomic)
+        print("[AppModel] created backup marker: \(markerURL.path)")
     }
 
     private func canWriteProbeFile(in directoryURL: URL) throws -> Bool {

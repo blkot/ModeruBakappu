@@ -16,22 +16,24 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("ModeruBakappu")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
-                    Text("Startup configuration is ready. Source discovery now uses the configured provider folder while backup actions remain gated on drive availability.")
+                    Text("\(appModel.configuredSourceCount) sources configured, \(appModel.discoveredModelCount) models discovered. Backup actions remain gated on drive availability.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
 
-                FolderStatusCard(
-                    title: "\(appModel.sourceDisplayName) Models Folder",
-                    path: appModel.lmStudioFolderURL?.path,
-                    stateTitle: appModel.lmStudioAccessState.title,
-                    summary: appModel.lmStudioAccessState.summary,
-                    accentColor: color(for: appModel.lmStudioAccessState),
-                    primaryActionTitle: "Change Folder",
-                    onPrimaryAction: { appModel.selectLMStudioFolder() },
-                    secondaryActionTitle: "Revalidate",
-                    onSecondaryAction: { appModel.refreshStatuses() }
-                )
+                ForEach(appModel.sourceConfigurations) { configuration in
+                    FolderStatusCard(
+                        title: "\(configuration.provider.displayName) Models Folder",
+                        path: configuration.folderURL?.path,
+                        stateTitle: configuration.accessState.title,
+                        summary: configuration.accessState.summary,
+                        accentColor: color(for: configuration.accessState),
+                        primaryActionTitle: configuration.folderURL == nil ? "Choose Folder" : "Change Folder",
+                        onPrimaryAction: { appModel.selectSourceFolder(for: configuration.provider) },
+                        secondaryActionTitle: "Revalidate",
+                        onSecondaryAction: { appModel.refreshStatuses() }
+                    )
+                }
 
                 FolderStatusCard(
                     title: "Backup Root",
@@ -45,31 +47,20 @@ struct DashboardView: View {
                     onSecondaryAction: { appModel.refreshStatuses() }
                 )
 
-                ModelsPanel(
-                    sourceDisplayName: appModel.sourceDisplayName,
-                    discoveryState: appModel.lmStudioDiscoveryState,
-                    models: appModel.lmStudioModels,
-                    backupState: { model in
-                        appModel.backupState(for: model)
-                    },
-                    onBackup: { model in
-                        appModel.backup(model: model)
-                    },
-                    onRefresh: { appModel.refreshModelDiscovery() }
-                )
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Next implementation milestone")
-                        .font(.headline)
-                    Text("Implement the backup plan and copy/verification flow, but keep writes disabled until the backup root is online and writable.")
-                        .foregroundStyle(.secondary)
+                ForEach(appModel.sourceConfigurations) { configuration in
+                    ModelsPanel(
+                        sourceDisplayName: configuration.provider.displayName,
+                        discoveryState: configuration.discoveryState,
+                        models: configuration.models,
+                        backupState: { model in
+                            appModel.backupState(for: model)
+                        },
+                        onBackup: { model in
+                            appModel.backup(model: model)
+                        },
+                        onRefresh: { appModel.refreshModelDiscovery() }
+                    )
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.08))
-                )
             }
             .padding(32)
         }

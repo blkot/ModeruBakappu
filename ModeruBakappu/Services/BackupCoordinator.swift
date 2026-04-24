@@ -37,7 +37,8 @@ final class BackupCoordinator {
             throw BackupCoordinatorError.backupRootUnavailable
         }
 
-        let backupRelativePath = "lm-studio/\(model.relativePath)"
+        let sourceDirectory = model.source.replacingOccurrences(of: "_", with: "-")
+        let backupRelativePath = "\(sourceDirectory)/\(model.relativePath)"
         let destinationURL = backupRoot.appendingPathComponent(backupRelativePath, isDirectory: true)
 
         if fileManager.fileExists(atPath: destinationURL.path) {

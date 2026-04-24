@@ -13,18 +13,20 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Source Access") {
-                LabeledContent("\(appModel.sourceDisplayName) Folder") {
-                    Text(appModel.lmStudioFolderURL?.path ?? "Not configured")
-                        .foregroundStyle(appModel.lmStudioFolderURL == nil ? .secondary : .primary)
-                }
+                ForEach(appModel.sourceConfigurations) { configuration in
+                    LabeledContent("\(configuration.provider.displayName) Folder") {
+                        Text(configuration.folderURL?.path ?? "Not configured")
+                            .foregroundStyle(configuration.folderURL == nil ? .secondary : .primary)
+                    }
 
-                LabeledContent("Source Status") {
-                    Text(appModel.lmStudioAccessState.title)
-                }
+                    LabeledContent("\(configuration.provider.displayName) Status") {
+                        Text(configuration.accessState.title)
+                    }
 
-                HStack {
-                    Button("Choose Models Folder") {
-                        appModel.selectLMStudioFolder()
+                    HStack {
+                        Button("Choose \(configuration.provider.displayName) Folder") {
+                            appModel.selectSourceFolder(for: configuration.provider)
+                        }
                     }
                 }
             }

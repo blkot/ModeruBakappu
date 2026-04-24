@@ -66,7 +66,7 @@ final class LMStudioDiscoveryService {
         let publisher = pathComponents.count > 1 ? pathComponents.first : nil
 
         return DiscoveredModel(
-            id: relativePath,
+            id: "\(source.rawValue):\(relativePath)",
             source: source.rawValue,
             publisher: publisher,
             displayName: directoryURL.lastPathComponent,

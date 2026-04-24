@@ -10,6 +10,7 @@ The previous Python/Textual implementation in this repository was a disposable m
 - SwiftUI-first UI
 - AppKit for file panels and macOS-specific integration
 - non-sandboxed distribution with direct filesystem access
+- provider-separated source discovery and backup paths
 - explicit handling for offline backup drives and missing permissions
 
 ## Current Status
@@ -33,7 +34,7 @@ This repository currently contains:
 2. implement onboarding and provider detection
 3. persist source and backup-folder settings
 4. validate external drive state
-5. add LM Studio discovery
+5. add provider-separated discovery for LM Studio and oMLX
 6. implement safe backup and restore
 
 ## Requirements

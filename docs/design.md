@@ -15,7 +15,7 @@ The app should be designed around three constraints:
 - Native macOS first: prefer SwiftUI, AppKit, and platform conventions over cross-platform abstractions.
 - Safe by default: never remove local data until copy and verification succeed.
 - Explicit states: permission errors, missing sources, and offline backup drives must be visible states, not silent failures.
-- Source-aware discovery: each supported LLM app gets its own detection and indexing service.
+- Source-aware discovery: each supported LLM app gets its own detected folder, status, model list, and backup namespace.
 - Backup index is local: the app should preserve model records even when the external drive is disconnected.
 
 ## Recommended Stack
@@ -86,7 +86,7 @@ Suggested screens:
 
 1. Show onboarding.
 2. Explain that the app will try to detect provider model folders and needs a backup folder.
-3. Detect LM Studio and other supported providers from current settings and known layouts.
+3. Detect LM Studio, oMLX, and other supported providers from current settings and known layouts.
 4. Let the user choose the backup root on an external drive.
 5. Persist the resolved paths in app settings.
 6. Validate read/write access before completing onboarding.
@@ -101,8 +101,8 @@ Suggested screens:
 
 ### Model Discovery
 
-1. Only scan sources that are in a ready state.
-2. Keep each source-specific scanner independent.
+1. Only scan provider sources that are in a ready state.
+2. Keep each provider's folder, status, and models independent.
 3. Persist the last known index locally.
 4. Show stale-but-known data if a source becomes temporarily unavailable.
 
@@ -110,7 +110,7 @@ Suggested screens:
 
 1. Ensure the backup drive is online and writable.
 2. Create a backup plan for the selected model.
-3. Copy data to the external drive.
+3. Copy data to the external drive under a provider-specific namespace.
 4. Verify the copied result.
 5. Update the local backup index.
 6. Only then offer optional local removal if that behavior is enabled.
@@ -139,6 +139,15 @@ LM Studio should be treated as a configurable source. The app should:
 2. auto-resolve the current models directory when possible
 3. let the user confirm or override it when detection fails or conflicts
 4. persist the resolved folder path
+
+### oMLX
+
+oMLX should be treated as a separate provider source from LM Studio. The app should:
+
+1. detect `~/.omlx/models`
+2. scan each top-level model directory independently
+3. back up oMLX models under an `omlx/` backup namespace
+4. keep oMLX records separate from LM Studio records
 
 ### Ollama
 

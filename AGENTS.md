@@ -89,6 +89,7 @@ macOS access to model folders and external-drive locations should be treated as 
 
 - The app is intentionally distributed outside the App Store and does not rely on App Sandbox.
 - Prefer automatic provider detection where practical, with user override when detection fails.
+- Treat each provider as an independent source with its own folder, state, discovered models, and backup namespace.
 - Model permission failures as explicit UI state.
 - Do not silently convert permission problems into "empty folder" results.
 
@@ -124,6 +125,14 @@ LM Studio should be treated as a configurable source.
 - Treat the resolved folder as the source of truth.
 
 Do not hardcode one fixed LM Studio path as the only supported location.
+
+### oMLX
+
+oMLX should be treated as its own provider.
+
+- Detect the default model root at `~/.omlx/models`.
+- Do not use `~/.omlx/model_settings.json` as the model root source of truth.
+- Back up oMLX models under their own provider namespace.
 
 ### Ollama
 
@@ -171,7 +180,7 @@ Build in this order:
 1. app skeleton
 2. onboarding and settings
 3. drive validation
-4. LM Studio detection and discovery
+4. provider detection and discovery for LM Studio and oMLX
 5. backup and restore
 6. later source support such as Ollama
 

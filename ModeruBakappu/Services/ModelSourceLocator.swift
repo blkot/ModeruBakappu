@@ -14,20 +14,17 @@ final class ModelSourceLocator {
         self.fileManager = fileManager
     }
 
-    func detectPreferredSource() -> DetectedSourceConfiguration? {
-        let detectors: [() -> DetectedSourceConfiguration?] = [
-            detectLMStudio,
-            detectOMLX
-        ]
+    func detectSources() -> [DetectedSourceConfiguration] {
+        let detected = [
+            detectLMStudio(),
+            detectOMLX()
+        ].compactMap { $0 }
 
-        for detector in detectors {
-            if let result = detector() {
-                print("[ModelSourceLocator] detected provider=\(result.provider.displayName) path=\(result.folderURL.path)")
-                return result
-            }
+        for result in detected {
+            print("[ModelSourceLocator] detected provider=\(result.provider.displayName) path=\(result.folderURL.path)")
         }
 
-        return nil
+        return detected
     }
 
     func inferProvider(for url: URL) -> ModelProvider {

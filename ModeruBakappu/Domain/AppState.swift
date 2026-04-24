@@ -9,6 +9,7 @@ import Foundation
 
 enum BookmarkKey: String, CaseIterable {
     case lmStudioModels
+    case omlxModels
     case backupRoot
 }
 
@@ -27,11 +28,44 @@ enum ModelProvider: String, Equatable, Codable {
             return "Custom Source"
         }
     }
+
+    var backupDirectoryName: String {
+        switch self {
+        case .lmStudio:
+            return "lm-studio"
+        case .omlx:
+            return "omlx"
+        case .custom:
+            return "custom"
+        }
+    }
+
+    var bookmarkKey: BookmarkKey? {
+        switch self {
+        case .lmStudio:
+            return .lmStudioModels
+        case .omlx:
+            return .omlxModels
+        case .custom:
+            return nil
+        }
+    }
 }
 
 struct DetectedSourceConfiguration: Equatable {
     let provider: ModelProvider
     let folderURL: URL
+}
+
+struct ModelSourceConfiguration: Identifiable, Equatable {
+    let provider: ModelProvider
+    var folderURL: URL?
+    var accessState: SourceAccessState
+    var discoveryState: LMStudioDiscoveryState
+    var models: [DiscoveredModel]
+    var bookmarkIsStale: Bool
+
+    var id: String { provider.rawValue }
 }
 
 enum SourceAccessState: Equatable {
@@ -234,4 +268,11 @@ struct BackupRecord: Codable, Equatable, Identifiable {
     let backedUpAt: Date
 
     var id: String { modelID }
+}
+
+struct BackupRootMarker: Codable, Equatable {
+    let schemaVersion: Int
+    let backupRootID: UUID
+    let appName: String
+    let createdAt: Date
 }

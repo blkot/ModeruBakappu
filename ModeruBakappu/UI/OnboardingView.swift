@@ -21,17 +21,19 @@ struct OnboardingView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                FolderStatusCard(
-                    title: "\(appModel.sourceDisplayName) Models Folder",
-                    path: appModel.lmStudioFolderURL?.path,
-                    stateTitle: appModel.lmStudioAccessState.title,
-                    summary: appModel.lmStudioAccessState.summary,
-                    accentColor: color(for: appModel.lmStudioAccessState),
-                    primaryActionTitle: appModel.lmStudioFolderURL == nil ? "Choose Folder" : "Change Folder",
-                    onPrimaryAction: { appModel.selectLMStudioFolder() },
-                    secondaryActionTitle: nil,
-                    onSecondaryAction: nil as (() -> Void)?
-                )
+                ForEach(appModel.sourceConfigurations) { configuration in
+                    FolderStatusCard(
+                        title: "\(configuration.provider.displayName) Models Folder",
+                        path: configuration.folderURL?.path,
+                        stateTitle: configuration.accessState.title,
+                        summary: configuration.accessState.summary,
+                        accentColor: color(for: configuration.accessState),
+                        primaryActionTitle: configuration.folderURL == nil ? "Choose Folder" : "Change Folder",
+                        onPrimaryAction: { appModel.selectSourceFolder(for: configuration.provider) },
+                        secondaryActionTitle: nil,
+                        onSecondaryAction: nil as (() -> Void)?
+                    )
+                }
 
                 FolderStatusCard(
                     title: "Backup Root",

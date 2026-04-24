@@ -39,13 +39,14 @@ Tasks:
 - add provider auto-detection for likely source folders
 - add folder selection using native macOS panels as fallback
 - persist resolved selections in app settings
+- keep each provider's source path and status independent
 - restore settings on relaunch
 - surface access failures as UI state
 
 Exit criteria:
 
-- app can auto-detect LM Studio when configuration is available
-- user can override LM Studio folder
+- app can auto-detect LM Studio and oMLX when their folders are available
+- user can override each provider folder
 - user can select backup root
 - selections persist across relaunch
 - invalid selections are reported cleanly
@@ -68,22 +69,24 @@ Exit criteria:
 - backup actions are gated by drive state
 - records remain visible when drive is disconnected
 
-## Phase 4: LM Studio Discovery
+## Phase 4: Provider Discovery
 
-Deliverable: correct LM Studio model indexing.
+Deliverable: correct provider-separated model indexing.
 
 Tasks:
 
 - read LM Studio settings for likely folder hints
 - resolve the current configured folder automatically when possible
-- support user override as the source of truth
-- scan the selected folder
+- detect oMLX at `~/.omlx/models`
+- support user override per provider as the source of truth
+- scan each selected provider folder
 - build local model index
 - show scan errors per source
 
 Exit criteria:
 
-- app lists models from the confirmed LM Studio directory
+- app lists models from confirmed provider directories
+- app keeps LM Studio and oMLX records separate
 - index survives relaunch
 - permission and path failures are visible
 
@@ -94,6 +97,7 @@ Deliverable: safe copy-based backup and restore flow.
 Tasks:
 
 - plan copy destinations
+- namespace copy destinations by provider
 - perform backup copy jobs
 - verify copied output
 - write backup records locally
@@ -147,4 +151,4 @@ ModeruBakappu/
 
 ## Immediate Next Step
 
-Implement provider auto-detection for LM Studio before expanding backup or restore behavior.
+Implement backup-root identity tracking and restore behavior before adding more providers.
