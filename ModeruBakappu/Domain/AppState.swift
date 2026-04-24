@@ -144,6 +144,38 @@ enum BackupDriveState: Equatable {
     }
 }
 
+struct BackupDriveSpaceInfo: Equatable {
+    let volumeName: String?
+    let volumePath: String
+    let availableBytes: Int64
+    let totalBytes: Int64
+
+    var usedBytes: Int64 {
+        max(totalBytes - availableBytes, 0)
+    }
+
+    var usedFraction: Double {
+        guard totalBytes > 0 else { return 0 }
+        return min(max(Double(usedBytes) / Double(totalBytes), 0), 1)
+    }
+
+    var availableDescription: String {
+        ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .file)
+    }
+
+    var totalDescription: String {
+        ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
+    }
+
+    var usedDescription: String {
+        ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)
+    }
+
+    var usedPercentageDescription: String {
+        usedFraction.formatted(.percent.precision(.fractionLength(0)))
+    }
+}
+
 enum LMStudioDiscoveryState: Equatable {
     case idle
     case unavailable
