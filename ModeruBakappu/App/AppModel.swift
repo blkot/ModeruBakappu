@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     private var activeBackupIDs: Set<String> = []
     private var backupFailures: [String: String] = [:]
     private var lastBackupValidationFailure: String?
+    private let backupRootIDDefaultsKey = "ModeruBakappu.backupRootID"
 
     private static let supportedProviders: [ModelProvider] = [.lmStudio, .omlx]
 
@@ -425,8 +426,12 @@ final class AppModel: ObservableObject {
     private func ensureBackupRootMarker(in directoryURL: URL) throws {
         let markerURL = directoryURL.appendingPathComponent(".moderubakappu-backup.json", isDirectory: false)
         if fileManager.fileExists(atPath: markerURL.path) {
-            _ = try Data(contentsOf: markerURL)
-            print("[AppModel] backup marker present: \(markerURL.path)")
+            let data = try Data(contentsOf: markerURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let marker = try decoder.decode(BackupRootMarker.self, from: data)
+            try validateBackupRootID(marker.backupRootID)
+            print("[AppModel] backup marker present: \(markerURL.path) id=\(marker.backupRootID.uuidString)")
             return
         }
 
@@ -441,7 +446,26 @@ final class AppModel: ObservableObject {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(marker)
         try data.write(to: markerURL, options: .atomic)
-        print("[AppModel] created backup marker: \(markerURL.path)")
+        UserDefaults.standard.set(marker.backupRootID.uuidString, forKey: backupRootIDDefaultsKey)
+        print("[AppModel] created backup marker: \(markerURL.path) id=\(marker.backupRootID.uuidString)")
+    }
+
+    private func validateBackupRootID(_ backupRootID: UUID) throws {
+        let defaults = UserDefaults.standard
+        guard let storedID = defaults.string(forKey: backupRootIDDefaultsKey) else {
+            defaults.set(backupRootID.uuidString, forKey: backupRootIDDefaultsKey)
+            return
+        }
+
+        guard storedID == backupRootID.uuidString else {
+            throw NSError(
+                domain: "ModeruBakappu.BackupRoot",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "The selected folder belongs to a different ModeruBakappu backup root."
+                ]
+            )
+        }
     }
 
     private func canWriteProbeFile(in directoryURL: URL) throws -> Bool {
