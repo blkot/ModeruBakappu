@@ -14,6 +14,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var sourceConfigurations: [ModelSourceConfiguration]
     @Published private(set) var backupFolderURL: URL?
     @Published private(set) var backupDriveState: BackupDriveState = .notConfigured
+    @Published private(set) var backupDriveSpaceInfo: BackupDriveSpaceInfo?
+    @Published private(set) var mainDriveSpaceInfo: BackupDriveSpaceInfo?
     @Published private(set) var backupRecords: [String: BackupRecord] = [:]
     @Published var errorMessage: String?
 
@@ -138,6 +140,8 @@ final class AppModel: ObservableObject {
             sourceConfigurations[index].accessState = state
         }
         backupDriveState = evaluateBackupFolder(url: backupFolderURL, isStale: backupBookmarkIsStale)
+        backupDriveSpaceInfo = readBackupDriveSpace(url: backupFolderURL)
+        mainDriveSpaceInfo = readMainDriveSpace()
         refreshModelDiscovery()
         print("[AppModel] configuredSources=\(configuredSourceCount) backupState=\(backupDriveState.title)")
     }
@@ -492,6 +496,44 @@ final class AppModel: ObservableObject {
         } catch {
             print("[AppModel] write probe cleanup failed: \(probeURL.path) error=\(error.localizedDescription)")
             return false
+        }
+    }
+
+    private func readBackupDriveSpace(url: URL?) -> BackupDriveSpaceInfo? {
+        guard let url else { return nil }
+
+        return withScopedAccess(to: url) {
+            readDriveSpace(at: url, logContext: "backup drive")
+        }
+    }
+
+    private func readMainDriveSpace() -> BackupDriveSpaceInfo? {
+        let homeURL = fileManager.homeDirectoryForCurrentUser
+        return readDriveSpace(at: homeURL, logContext: "main drive")
+    }
+
+    private func readDriveSpace(at url: URL, logContext: String) -> BackupDriveSpaceInfo? {
+        do {
+            let values = try url.resourceValues(forKeys: [.volumeNameKey])
+            let attributes = try fileManager.attributesOfFileSystem(forPath: url.path)
+
+            guard let freeSize = attributes[.systemFreeSize] as? NSNumber,
+                  let totalSize = attributes[.systemSize] as? NSNumber,
+                  freeSize.int64Value >= 0,
+                  totalSize.int64Value > 0
+            else {
+                return nil
+            }
+
+            return BackupDriveSpaceInfo(
+                volumeName: values.volumeName,
+                volumePath: url.path,
+                availableBytes: freeSize.int64Value,
+                totalBytes: totalSize.int64Value
+            )
+        } catch {
+            print("[AppModel] failed to read \(logContext) space: \(error.localizedDescription)")
+            return nil
         }
     }
 
