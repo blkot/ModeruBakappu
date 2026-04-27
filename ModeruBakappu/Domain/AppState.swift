@@ -264,6 +264,102 @@ enum ModelBackupState: Equatable {
     }
 }
 
+enum ProviderReadinessState: Equatable {
+    case ready
+    case notReady(String)
+    case unknown(String)
+
+    var title: String {
+        switch self {
+        case .ready:
+            return "Provider Ready"
+        case .notReady:
+            return "Provider Not Ready"
+        case .unknown:
+            return "Provider Unknown"
+        }
+    }
+
+    var summary: String? {
+        switch self {
+        case .ready:
+            return nil
+        case let .notReady(message), let .unknown(message):
+            return message
+        }
+    }
+}
+
+enum ModelLifecycleState: Equatable {
+    case localOnly
+    case backedUp(BackupRecord)
+    case backupUnavailable
+    case backingUp
+    case backupFailed(String)
+    case archived(BackupRecord)
+    case restorable(BackupRecord)
+    case missingBackupDrive(BackupRecord)
+    case restoreConflict(String)
+    case providerNotReady(String)
+    case unknown(String)
+
+    var title: String {
+        switch self {
+        case .localOnly:
+            return "Local Only"
+        case .backedUp:
+            return "Backed Up"
+        case .backupUnavailable:
+            return "Backup Unavailable"
+        case .backingUp:
+            return "Backing Up"
+        case .backupFailed:
+            return "Backup Failed"
+        case .archived:
+            return "Archived"
+        case .restorable:
+            return "Restorable"
+        case .missingBackupDrive:
+            return "Drive Offline"
+        case .restoreConflict:
+            return "Restore Conflict"
+        case .providerNotReady:
+            return "Provider Not Ready"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .localOnly:
+            return "Stored only on this Mac."
+        case let .backedUp(record):
+            return "Verified backup at \(record.backupRelativePath)."
+        case .backupUnavailable:
+            return "Backup actions require an online backup drive."
+        case .backingUp:
+            return "Copying and verifying backup contents."
+        case let .backupFailed(message):
+            return message
+        case let .archived(record):
+            return "Local data removed; backup is at \(record.backupRelativePath)."
+        case let .restorable(record):
+            return "Can restore from \(record.backupRelativePath)."
+        case let .missingBackupDrive(record):
+            return "Backup record exists at \(record.backupRelativePath), but the drive is offline."
+        case let .restoreConflict(message), let .providerNotReady(message), let .unknown(message):
+            return message
+        }
+    }
+}
+
+struct ModelLifecycleStatus: Equatable {
+    let state: ModelLifecycleState
+    let providerReadiness: ProviderReadinessState
+    let backupState: ModelBackupState
+}
+
 struct ResolvedBookmark: Equatable {
     let url: URL
     let isStale: Bool

@@ -198,6 +198,30 @@ final class AppModel: ObservableObject {
         return .ready
     }
 
+    func lifecycleStatus(for model: DiscoveredModel) -> ModelLifecycleStatus {
+        let backupState = backupState(for: model)
+        let lifecycleState: ModelLifecycleState
+
+        switch backupState {
+        case .ready:
+            lifecycleState = .localOnly
+        case .unavailable:
+            lifecycleState = .backupUnavailable
+        case .inProgress:
+            lifecycleState = .backingUp
+        case let .backedUp(record):
+            lifecycleState = .backedUp(record)
+        case let .failed(message):
+            lifecycleState = .backupFailed(message)
+        }
+
+        return ModelLifecycleStatus(
+            state: lifecycleState,
+            providerReadiness: .ready,
+            backupState: backupState
+        )
+    }
+
     func backup(model: DiscoveredModel) {
         guard backupState(for: model).canTriggerBackup, let backupFolderURL else {
             return

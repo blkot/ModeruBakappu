@@ -141,7 +141,7 @@ struct DashboardView: View {
 
                 ModelListView(
                     configuration: configuration,
-                    backupState: { appModel.backupState(for: $0) },
+                    lifecycleStatus: { appModel.lifecycleStatus(for: $0) },
                     onBackup: { appModel.backup(model: $0) }
                 )
             }
@@ -377,7 +377,7 @@ private struct ProviderDetailHeader: View {
 
 private struct ModelListView: View {
     let configuration: ModelSourceConfiguration
-    let backupState: (DiscoveredModel) -> ModelBackupState
+    let lifecycleStatus: (DiscoveredModel) -> ModelLifecycleStatus
     let onBackup: (DiscoveredModel) -> Void
 
     var body: some View {
@@ -387,8 +387,8 @@ private struct ModelListView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text("Local")
                     .frame(width: 150, alignment: .leading)
-                Text("Backup")
-                    .frame(width: 180, alignment: .leading)
+                Text("Lifecycle")
+                    .frame(width: 210, alignment: .leading)
                 Text("Action")
                     .frame(width: 100, alignment: .trailing)
             }
@@ -411,7 +411,7 @@ private struct ModelListView: View {
                             ProviderModelRow(
                                 model: model,
                                 provider: configuration.provider,
-                                backupState: backupState(model),
+                                lifecycleStatus: lifecycleStatus(model),
                                 onBackup: { onBackup(model) }
                             )
                             Divider()
@@ -426,7 +426,7 @@ private struct ModelListView: View {
 private struct ProviderModelRow: View {
     let model: DiscoveredModel
     let provider: ModelProvider
-    let backupState: ModelBackupState
+    let lifecycleStatus: ModelLifecycleStatus
     let onBackup: () -> Void
 
     var body: some View {
@@ -465,11 +465,11 @@ private struct ProviderModelRow: View {
             .foregroundStyle(.secondary)
             .frame(width: 150, alignment: .leading)
 
-            BackupStatusSummary(provider: provider, state: backupState)
-                .frame(width: 180, alignment: .leading)
+            LifecycleStatusSummary(provider: provider, status: lifecycleStatus)
+                .frame(width: 210, alignment: .leading)
 
-            Button(backupState.buttonTitle, action: onBackup)
-                .disabled(!backupState.canTriggerBackup)
+            Button(lifecycleStatus.backupState.buttonTitle, action: onBackup)
+                .disabled(!lifecycleStatus.backupState.canTriggerBackup)
                 .frame(width: 100, alignment: .trailing)
         }
         .padding(.horizontal, 24)
@@ -477,9 +477,9 @@ private struct ProviderModelRow: View {
     }
 }
 
-private struct BackupStatusSummary: View {
+private struct LifecycleStatusSummary: View {
     let provider: ModelProvider
-    let state: ModelBackupState
+    let status: ModelLifecycleStatus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -500,40 +500,29 @@ private struct BackupStatusSummary: View {
     }
 
     private var title: String {
-        switch state {
-        case .unavailable:
-            return "Unavailable"
-        case .ready:
-            return "Not backed up"
-        case .inProgress:
-            return "Copying"
-        case .backedUp:
-            return "Verified"
-        case .failed:
-            return "Failed"
-        }
+        status.state.title
     }
 
     private var subtitle: String {
-        switch state {
-        case .ready:
+        switch status.state {
+        case .localOnly:
             return "Maps to /\(provider.backupDirectoryName)"
-        case let .backedUp(record):
-            return record.backupRelativePath
         default:
-            return state.summary ?? "Maps to /\(provider.backupDirectoryName)"
+            return status.state.summary
         }
     }
 
     private var color: Color {
-        switch state {
-        case .failed:
+        switch status.state {
+        case .backupFailed, .restoreConflict, .providerNotReady:
             return .red
-        case .inProgress:
+        case .backingUp:
             return .orange
-        case .backedUp:
+        case .backedUp, .restorable:
             return .green
-        case .unavailable, .ready:
+        case .archived:
+            return .blue
+        case .localOnly, .backupUnavailable, .missingBackupDrive, .unknown:
             return .secondary
         }
     }
