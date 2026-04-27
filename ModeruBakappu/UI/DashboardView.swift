@@ -43,17 +43,16 @@ struct DashboardView: View {
                 selectedProvider = firstProvider
             }
         }
-        .alert(
-            "Archive Model?",
-            isPresented: archiveConfirmationBinding,
-            presenting: pendingArchiveRequest
-        ) { request in
-            Button("Archive", role: .destructive) {
-                appModel.archive(model: request.model)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { request in
-            ArchiveConfirmationMessage(provider: request.provider, model: request.model)
+        .sheet(item: $pendingArchiveRequest) { request in
+            ArchiveConfirmationSheet(
+                provider: request.provider,
+                model: request.model,
+                onCancel: { pendingArchiveRequest = nil },
+                onArchive: {
+                    pendingArchiveRequest = nil
+                    appModel.archive(model: request.model)
+                }
+            )
         }
         .alert(
             "Restore Model?",
@@ -67,17 +66,6 @@ struct DashboardView: View {
         } message: { model in
             Text("ModeruBakappu will copy and verify \(model.displayName) back into the provider's model folder.")
         }
-    }
-
-    private var archiveConfirmationBinding: Binding<Bool> {
-        Binding(
-            get: { pendingArchiveRequest != nil },
-            set: { isPresented in
-                if !isPresented {
-                    pendingArchiveRequest = nil
-                }
-            }
-        )
     }
 
     private var restoreConfirmationBinding: Binding<Bool> {
@@ -237,45 +225,92 @@ private struct ModelActionRequest: Identifiable {
     }
 }
 
-private struct ArchiveConfirmationMessage: View {
+private struct ArchiveConfirmationSheet: View {
+    let provider: ModelProvider
+    let model: DiscoveredModel
+    let onCancel: () -> Void
+    let onArchive: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: "archivebox")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(Color.red.opacity(0.9), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Archive Model?")
+                        .font(.title3.weight(.semibold))
+                    Text("This will free space on this Mac after backup verification.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ArchiveModelInfoFrame(provider: provider, model: model)
+
+            Text("ModeruBakappu will copy and verify this model on the backup drive, then remove the local model folder from this Mac. Use Back Up when you want a duplicate; use Archive when you want to free space on this Mac.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Archive", role: .destructive, action: onArchive)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+private struct ArchiveModelInfoFrame: View {
     let provider: ModelProvider
     let model: DiscoveredModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                LabeledContent("Provider") {
-                    Text(provider.displayName)
-                        .fontWeight(.semibold)
-                }
-
-                LabeledContent("Model") {
-                    Text(model.displayName)
-                        .fontWeight(.semibold)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.trailing)
-                        .textSelection(.enabled)
-                }
-
-                LabeledContent("Path") {
-                    Text(model.relativePath)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                        .multilineTextAlignment(.trailing)
-                        .textSelection(.enabled)
-                }
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 9) {
+            GridRow {
+                Text("Provider")
+                    .foregroundStyle(.secondary)
+                Text(provider.displayName)
+                    .fontWeight(.semibold)
             }
-            .padding(10)
-            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            GridRow {
+                Text("Model")
+                    .foregroundStyle(.secondary)
+                Text(model.displayName)
+                    .fontWeight(.semibold)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+            }
+
+            GridRow {
+                Text("Path")
+                    .foregroundStyle(.secondary)
+                Text(model.relativePath)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+        }
+        .font(.callout)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(Color.accentColor.opacity(0.24))
             )
-
-            Text("ModeruBakappu will copy and verify this model on the backup drive, then remove the local model folder from this Mac. Use Back Up when you want a duplicate; use Archive when you want to free space on this Mac.")
-        }
     }
 }
 
