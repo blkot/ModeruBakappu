@@ -53,7 +53,7 @@ struct DashboardView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { model in
-            Text("ModeruBakappu will copy and verify \(model.displayName) on the backup drive, then remove the local model folder from this Mac.")
+            ArchiveConfirmationMessage(model: model)
         }
         .alert(
             "Restore Model?",
@@ -224,6 +224,27 @@ struct DashboardView: View {
             return .red
         case .notConfigured, .offline:
             return .secondary
+        }
+    }
+}
+
+private struct ArchiveConfirmationMessage: View {
+    let model: DiscoveredModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(model.displayName)
+                .font(.headline.weight(.semibold))
+                .textSelection(.enabled)
+
+            Text(model.relativePath)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+
+            Text("ModeruBakappu will copy and verify this model on the backup drive, then remove the local model folder from this Mac.")
         }
     }
 }

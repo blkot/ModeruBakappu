@@ -190,6 +190,7 @@ final class AppModel: ObservableObject {
         let archivedModels = backupRecords.values.compactMap { record -> DiscoveredModel? in
             guard record.source == configuration.provider.rawValue,
                   record.effectiveLocalState == .archived,
+                  backupRecordIsAvailable(record),
                   !localIDs.contains(record.modelID),
                   let folderURL = configuration.folderURL
             else {
@@ -228,7 +229,13 @@ final class AppModel: ObservableObject {
         }
 
         if let record = backupRecords[model.id] {
-            return .backedUp(record)
+            if backupRecordIsAvailable(record) {
+                return .backedUp(record)
+            }
+
+            if backupDriveState == .online {
+                return .ready
+            }
         }
 
         guard backupDriveState == .online else {
@@ -236,6 +243,18 @@ final class AppModel: ObservableObject {
         }
 
         return .ready
+    }
+
+    private func backupRecordIsAvailable(_ record: BackupRecord) -> Bool {
+        guard backupDriveState == .online,
+              let backupFolderURL
+        else {
+            return false
+        }
+
+        let backupURL = backupFolderURL.appendingPathComponent(record.backupRelativePath, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        return fileManager.fileExists(atPath: backupURL.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
     func lifecycleStatus(for model: DiscoveredModel) -> ModelLifecycleStatus {
