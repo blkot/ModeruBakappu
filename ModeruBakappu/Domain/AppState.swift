@@ -262,6 +262,15 @@ enum ModelBackupState: Equatable {
             return false
         }
     }
+
+    var backupRecord: BackupRecord? {
+        switch self {
+        case let .backedUp(record):
+            return record
+        case .unavailable, .ready, .inProgress, .failed:
+            return nil
+        }
+    }
 }
 
 enum ProviderReadinessState: Equatable {

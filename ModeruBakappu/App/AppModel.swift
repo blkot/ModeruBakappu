@@ -5,6 +5,7 @@
 //  Created by Codex on 2026/4/19.
 //
 
+import AppKit
 import Combine
 import Foundation
 
@@ -250,6 +251,23 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 self.completeBackup(result, for: model.id)
             }
+        }
+    }
+
+    func revealLocalModel(_ model: DiscoveredModel) {
+        NSWorkspace.shared.activateFileViewerSelecting([model.folderURL])
+    }
+
+    func revealBackup(for model: DiscoveredModel) {
+        guard let backupFolderURL,
+              let record = backupRecords[model.id]
+        else {
+            return
+        }
+
+        let backupURL = backupFolderURL.appendingPathComponent(record.backupRelativePath, isDirectory: true)
+        withScopedAccess(to: backupFolderURL) {
+            NSWorkspace.shared.activateFileViewerSelecting([backupURL])
         }
     }
 

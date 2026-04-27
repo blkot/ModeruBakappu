@@ -142,7 +142,9 @@ struct DashboardView: View {
                 ModelListView(
                     configuration: configuration,
                     lifecycleStatus: { appModel.lifecycleStatus(for: $0) },
-                    onBackup: { appModel.backup(model: $0) }
+                    onBackup: { appModel.backup(model: $0) },
+                    onRevealLocal: { appModel.revealLocalModel($0) },
+                    onRevealBackup: { appModel.revealBackup(for: $0) }
                 )
             }
         }
@@ -379,6 +381,8 @@ private struct ModelListView: View {
     let configuration: ModelSourceConfiguration
     let lifecycleStatus: (DiscoveredModel) -> ModelLifecycleStatus
     let onBackup: (DiscoveredModel) -> Void
+    let onRevealLocal: (DiscoveredModel) -> Void
+    let onRevealBackup: (DiscoveredModel) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -390,7 +394,7 @@ private struct ModelListView: View {
                 Text("Lifecycle")
                     .frame(width: 210, alignment: .leading)
                 Text("Action")
-                    .frame(width: 100, alignment: .trailing)
+                    .frame(width: 120, alignment: .trailing)
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
@@ -412,7 +416,9 @@ private struct ModelListView: View {
                                 model: model,
                                 provider: configuration.provider,
                                 lifecycleStatus: lifecycleStatus(model),
-                                onBackup: { onBackup(model) }
+                                onBackup: { onBackup(model) },
+                                onRevealLocal: { onRevealLocal(model) },
+                                onRevealBackup: { onRevealBackup(model) }
                             )
                             Divider()
                         }
@@ -428,6 +434,8 @@ private struct ProviderModelRow: View {
     let provider: ModelProvider
     let lifecycleStatus: ModelLifecycleStatus
     let onBackup: () -> Void
+    let onRevealLocal: () -> Void
+    let onRevealBackup: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
@@ -468,12 +476,46 @@ private struct ProviderModelRow: View {
             LifecycleStatusSummary(provider: provider, status: lifecycleStatus)
                 .frame(width: 210, alignment: .leading)
 
-            Button(lifecycleStatus.backupState.buttonTitle, action: onBackup)
-                .disabled(!lifecycleStatus.backupState.canTriggerBackup)
-                .frame(width: 100, alignment: .trailing)
+            ModelActionMenu(
+                status: lifecycleStatus,
+                onBackup: onBackup,
+                onRevealLocal: onRevealLocal,
+                onRevealBackup: onRevealBackup
+            )
+            .frame(width: 120, alignment: .trailing)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
+    }
+}
+
+private struct ModelActionMenu: View {
+    let status: ModelLifecycleStatus
+    let onBackup: () -> Void
+    let onRevealLocal: () -> Void
+    let onRevealBackup: () -> Void
+
+    var body: some View {
+        Menu {
+            Button(status.backupState.buttonTitle, action: onBackup)
+                .disabled(!status.backupState.canTriggerBackup)
+
+            Divider()
+
+            Button("Reveal Local", action: onRevealLocal)
+            Button("Reveal Backup", action: onRevealBackup)
+                .disabled(status.backupState.backupRecord == nil)
+
+            Divider()
+
+            Button("Archive") {}
+                .disabled(true)
+            Button("Restore") {}
+                .disabled(true)
+        } label: {
+            Label("Actions", systemImage: "ellipsis.circle")
+        }
+        .menuStyle(.button)
     }
 }
 
