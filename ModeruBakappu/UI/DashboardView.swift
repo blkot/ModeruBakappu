@@ -10,6 +10,7 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var selectedProvider: ModelProvider = .lmStudio
+    @State private var pendingArchiveModel: DiscoveredModel?
 
     private var selectedConfiguration: ModelSourceConfiguration? {
         appModel.sourceConfigurations.first { $0.provider == selectedProvider }
@@ -41,6 +42,29 @@ struct DashboardView: View {
                 selectedProvider = firstProvider
             }
         }
+        .alert(
+            "Archive Model?",
+            isPresented: archiveConfirmationBinding,
+            presenting: pendingArchiveModel
+        ) { model in
+            Button("Archive", role: .destructive) {
+                appModel.archive(model: model)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { model in
+            Text("ModeruBakappu will copy and verify \(model.displayName) on the backup drive, then remove the local model folder from this Mac.")
+        }
+    }
+
+    private var archiveConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingArchiveModel != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingArchiveModel = nil
+                }
+            }
+        )
     }
 
     private var header: some View {
@@ -141,8 +165,10 @@ struct DashboardView: View {
 
                 ModelListView(
                     configuration: configuration,
+                    models: appModel.displayModels(for: configuration),
                     lifecycleStatus: { appModel.lifecycleStatus(for: $0) },
                     onBackup: { appModel.backup(model: $0) },
+                    onArchive: { pendingArchiveModel = $0 },
                     onRevealLocal: { appModel.revealLocalModel($0) },
                     onRevealBackup: { appModel.revealBackup(for: $0) }
                 )
@@ -379,8 +405,10 @@ private struct ProviderDetailHeader: View {
 
 private struct ModelListView: View {
     let configuration: ModelSourceConfiguration
+    let models: [DiscoveredModel]
     let lifecycleStatus: (DiscoveredModel) -> ModelLifecycleStatus
     let onBackup: (DiscoveredModel) -> Void
+    let onArchive: (DiscoveredModel) -> Void
     let onRevealLocal: (DiscoveredModel) -> Void
     let onRevealBackup: (DiscoveredModel) -> Void
 
@@ -403,20 +431,25 @@ private struct ModelListView: View {
 
             Divider()
 
-            switch configuration.discoveryState {
-            case .idle, .scanning, .unavailable, .empty:
-                EmptyModelState(message: configuration.discoveryState.summary)
-            case let .failed(message):
-                EmptyModelState(message: message)
-            case .ready:
+            if models.isEmpty {
+                switch configuration.discoveryState {
+                case .idle, .scanning, .unavailable, .empty:
+                    EmptyModelState(message: configuration.discoveryState.summary)
+                case let .failed(message):
+                    EmptyModelState(message: message)
+                case .ready:
+                    EmptyModelState(message: configuration.discoveryState.summary)
+                }
+            } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(configuration.models) { model in
+                        ForEach(models) { model in
                             ProviderModelRow(
                                 model: model,
                                 provider: configuration.provider,
                                 lifecycleStatus: lifecycleStatus(model),
                                 onBackup: { onBackup(model) },
+                                onArchive: { onArchive(model) },
                                 onRevealLocal: { onRevealLocal(model) },
                                 onRevealBackup: { onRevealBackup(model) }
                             )
@@ -434,6 +467,7 @@ private struct ProviderModelRow: View {
     let provider: ModelProvider
     let lifecycleStatus: ModelLifecycleStatus
     let onBackup: () -> Void
+    let onArchive: () -> Void
     let onRevealLocal: () -> Void
     let onRevealBackup: () -> Void
 
@@ -479,6 +513,7 @@ private struct ProviderModelRow: View {
             ModelActionMenu(
                 status: lifecycleStatus,
                 onBackup: onBackup,
+                onArchive: onArchive,
                 onRevealLocal: onRevealLocal,
                 onRevealBackup: onRevealBackup
             )
@@ -492,6 +527,7 @@ private struct ProviderModelRow: View {
 private struct ModelActionMenu: View {
     let status: ModelLifecycleStatus
     let onBackup: () -> Void
+    let onArchive: () -> Void
     let onRevealLocal: () -> Void
     let onRevealBackup: () -> Void
 
@@ -508,8 +544,8 @@ private struct ModelActionMenu: View {
 
             Divider()
 
-            Button("Archive") {}
-                .disabled(true)
+            Button("Archive", action: onArchive)
+                .disabled(!status.canTriggerArchive)
             Button("Restore") {}
                 .disabled(true)
         } label: {
@@ -556,9 +592,9 @@ private struct LifecycleStatusSummary: View {
 
     private var color: Color {
         switch status.state {
-        case .backupFailed, .restoreConflict, .providerNotReady:
+        case .backupFailed, .archiveFailed, .restoreConflict, .providerNotReady:
             return .red
-        case .backingUp:
+        case .backingUp, .archiving:
             return .orange
         case .backedUp, .restorable:
             return .green

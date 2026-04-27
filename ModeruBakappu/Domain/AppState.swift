@@ -305,6 +305,8 @@ enum ModelLifecycleState: Equatable {
     case backupUnavailable
     case backingUp
     case backupFailed(String)
+    case archiving
+    case archiveFailed(String)
     case archived(BackupRecord)
     case restorable(BackupRecord)
     case missingBackupDrive(BackupRecord)
@@ -324,6 +326,10 @@ enum ModelLifecycleState: Equatable {
             return "Backing Up"
         case .backupFailed:
             return "Backup Failed"
+        case .archiving:
+            return "Archiving"
+        case .archiveFailed:
+            return "Archive Failed"
         case .archived:
             return "Archived"
         case .restorable:
@@ -351,6 +357,10 @@ enum ModelLifecycleState: Equatable {
             return "Copying and verifying backup contents."
         case let .backupFailed(message):
             return message
+        case .archiving:
+            return "Copying, verifying, and preparing local removal."
+        case let .archiveFailed(message):
+            return message
         case let .archived(record):
             return "Local data removed; backup is at \(record.backupRelativePath)."
         case let .restorable(record):
@@ -367,6 +377,15 @@ struct ModelLifecycleStatus: Equatable {
     let state: ModelLifecycleState
     let providerReadiness: ProviderReadinessState
     let backupState: ModelBackupState
+
+    var canTriggerArchive: Bool {
+        switch state {
+        case .localOnly, .backedUp, .backupFailed, .archiveFailed:
+            return backupState != .inProgress
+        case .backupUnavailable, .backingUp, .archiving, .archived, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+            return false
+        }
+    }
 }
 
 struct ResolvedBookmark: Equatable {
@@ -403,8 +422,20 @@ struct BackupRecord: Codable, Equatable, Identifiable {
     let sizeBytes: Int64
     let fileCount: Int
     let backedUpAt: Date
+    let localState: ModelLocalState?
+    let archivedAt: Date?
+    let restoredAt: Date?
 
     var id: String { modelID }
+
+    var effectiveLocalState: ModelLocalState {
+        localState ?? .present
+    }
+}
+
+enum ModelLocalState: String, Codable, Equatable {
+    case present
+    case archived
 }
 
 struct BackupRootMarker: Codable, Equatable {
