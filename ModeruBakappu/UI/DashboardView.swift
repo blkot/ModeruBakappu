@@ -10,7 +10,7 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var selectedProvider: ModelProvider = .lmStudio
-    @State private var pendingArchiveModel: DiscoveredModel?
+    @State private var pendingArchiveRequest: ModelActionRequest?
     @State private var pendingRestoreModel: DiscoveredModel?
 
     private var selectedConfiguration: ModelSourceConfiguration? {
@@ -46,14 +46,14 @@ struct DashboardView: View {
         .alert(
             "Archive Model?",
             isPresented: archiveConfirmationBinding,
-            presenting: pendingArchiveModel
-        ) { model in
+            presenting: pendingArchiveRequest
+        ) { request in
             Button("Archive", role: .destructive) {
-                appModel.archive(model: model)
+                appModel.archive(model: request.model)
             }
             Button("Cancel", role: .cancel) {}
-        } message: { model in
-            ArchiveConfirmationMessage(model: model)
+        } message: { request in
+            ArchiveConfirmationMessage(provider: request.provider, model: request.model)
         }
         .alert(
             "Restore Model?",
@@ -71,10 +71,10 @@ struct DashboardView: View {
 
     private var archiveConfirmationBinding: Binding<Bool> {
         Binding(
-            get: { pendingArchiveModel != nil },
+            get: { pendingArchiveRequest != nil },
             set: { isPresented in
                 if !isPresented {
-                    pendingArchiveModel = nil
+                    pendingArchiveRequest = nil
                 }
             }
         )
@@ -192,7 +192,7 @@ struct DashboardView: View {
                     models: appModel.displayModels(for: configuration),
                     lifecycleStatus: { appModel.lifecycleStatus(for: $0) },
                     onBackup: { appModel.backup(model: $0) },
-                    onArchive: { pendingArchiveModel = $0 },
+                    onArchive: { pendingArchiveRequest = ModelActionRequest(provider: configuration.provider, model: $0) },
                     onRestore: { pendingRestoreModel = $0 },
                     onRevealLocal: { appModel.revealLocalModel($0) },
                     onRevealBackup: { appModel.revealBackup(for: $0) }
@@ -228,23 +228,53 @@ struct DashboardView: View {
     }
 }
 
+private struct ModelActionRequest: Identifiable {
+    let provider: ModelProvider
+    let model: DiscoveredModel
+
+    var id: String {
+        "\(provider.rawValue):\(model.id)"
+    }
+}
+
 private struct ArchiveConfirmationMessage: View {
+    let provider: ModelProvider
     let model: DiscoveredModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(model.displayName)
-                .font(.headline.weight(.semibold))
-                .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Provider") {
+                    Text(provider.displayName)
+                        .fontWeight(.semibold)
+                }
 
-            Text(model.relativePath)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
+                LabeledContent("Model") {
+                    Text(model.displayName)
+                        .fontWeight(.semibold)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                        .textSelection(.enabled)
+                }
 
-            Text("ModeruBakappu will copy and verify this model on the backup drive, then remove the local model folder from this Mac.")
+                LabeledContent("Path") {
+                    Text(model.relativePath)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .multilineTextAlignment(.trailing)
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(10)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.accentColor.opacity(0.24))
+            )
+
+            Text("ModeruBakappu will copy and verify this model on the backup drive, then remove the local model folder from this Mac. Use Back Up when you want a duplicate; use Archive when you want to free space on this Mac.")
         }
     }
 }
@@ -586,19 +616,24 @@ private struct ModelActionMenu: View {
         Menu {
             Button(status.backupState.buttonTitle, action: onBackup)
                 .disabled(!status.backupState.canTriggerBackup)
+                .help("Copy this model to the backup drive. The local model stays on this Mac.")
 
             Divider()
 
             Button("Reveal Local", action: onRevealLocal)
+                .help("Open the local model folder in Finder.")
             Button("Reveal Backup", action: onRevealBackup)
                 .disabled(status.backupState.backupRecord == nil)
+                .help("Open this model's backup folder in Finder.")
 
             Divider()
 
             Button("Archive", action: onArchive)
                 .disabled(!status.canTriggerArchive)
+                .help("Copy and verify this model on the backup drive, then remove the local copy to free space.")
             Button("Restore", action: onRestore)
                 .disabled(!status.canTriggerRestore)
+                .help("Copy the archived model back to this Mac from the backup drive.")
         } label: {
             Label("Actions", systemImage: "ellipsis.circle")
         }
@@ -626,6 +661,7 @@ private struct LifecycleStatusSummary: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
+        .help(helpText)
     }
 
     private var title: String {
@@ -638,6 +674,41 @@ private struct LifecycleStatusSummary: View {
             return "Maps to /\(provider.backupDirectoryName)"
         default:
             return status.state.summary
+        }
+    }
+
+    private var helpText: String {
+        switch status.state {
+        case .localOnly:
+            return "This model exists only on this Mac. Back Up creates a duplicate on the backup drive."
+        case .backedUp:
+            return "A verified backup exists, and the model is still available locally."
+        case .backupUnavailable:
+            return "Backup and archive actions require a reachable writable backup drive."
+        case .backingUp:
+            return "ModeruBakappu is copying and verifying the backup. The local model remains in place."
+        case let .backupFailed(message):
+            return "Backup failed: \(message)"
+        case .archiving:
+            return "ModeruBakappu is ensuring a verified backup exists, then it will remove the local copy."
+        case let .archiveFailed(message):
+            return "Archive failed: \(message)"
+        case .archived:
+            return "The local model was removed after backup verification."
+        case .restoring:
+            return "ModeruBakappu is copying the archived model back to this Mac and verifying it."
+        case let .restoreFailed(message):
+            return "Restore failed: \(message)"
+        case .restorable:
+            return "The local copy was removed. Restore copies it back from the backup drive."
+        case .missingBackupDrive:
+            return "This model is archived, but the backup drive is not currently available."
+        case let .restoreConflict(message):
+            return "Restore conflict: \(message)"
+        case let .providerNotReady(message):
+            return "Provider is not ready: \(message)"
+        case let .unknown(message):
+            return message
         }
     }
 
