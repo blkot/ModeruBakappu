@@ -11,6 +11,7 @@ struct DashboardView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var selectedProvider: ModelProvider = .lmStudio
     @State private var pendingArchiveModel: DiscoveredModel?
+    @State private var pendingRestoreModel: DiscoveredModel?
 
     private var selectedConfiguration: ModelSourceConfiguration? {
         appModel.sourceConfigurations.first { $0.provider == selectedProvider }
@@ -54,6 +55,18 @@ struct DashboardView: View {
         } message: { model in
             Text("ModeruBakappu will copy and verify \(model.displayName) on the backup drive, then remove the local model folder from this Mac.")
         }
+        .alert(
+            "Restore Model?",
+            isPresented: restoreConfirmationBinding,
+            presenting: pendingRestoreModel
+        ) { model in
+            Button("Restore") {
+                appModel.restore(model: model)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { model in
+            Text("ModeruBakappu will copy and verify \(model.displayName) back into the provider's model folder.")
+        }
     }
 
     private var archiveConfirmationBinding: Binding<Bool> {
@@ -62,6 +75,17 @@ struct DashboardView: View {
             set: { isPresented in
                 if !isPresented {
                     pendingArchiveModel = nil
+                }
+            }
+        )
+    }
+
+    private var restoreConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingRestoreModel != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingRestoreModel = nil
                 }
             }
         )
@@ -169,6 +193,7 @@ struct DashboardView: View {
                     lifecycleStatus: { appModel.lifecycleStatus(for: $0) },
                     onBackup: { appModel.backup(model: $0) },
                     onArchive: { pendingArchiveModel = $0 },
+                    onRestore: { pendingRestoreModel = $0 },
                     onRevealLocal: { appModel.revealLocalModel($0) },
                     onRevealBackup: { appModel.revealBackup(for: $0) }
                 )
@@ -409,6 +434,7 @@ private struct ModelListView: View {
     let lifecycleStatus: (DiscoveredModel) -> ModelLifecycleStatus
     let onBackup: (DiscoveredModel) -> Void
     let onArchive: (DiscoveredModel) -> Void
+    let onRestore: (DiscoveredModel) -> Void
     let onRevealLocal: (DiscoveredModel) -> Void
     let onRevealBackup: (DiscoveredModel) -> Void
 
@@ -450,6 +476,7 @@ private struct ModelListView: View {
                                 lifecycleStatus: lifecycleStatus(model),
                                 onBackup: { onBackup(model) },
                                 onArchive: { onArchive(model) },
+                                onRestore: { onRestore(model) },
                                 onRevealLocal: { onRevealLocal(model) },
                                 onRevealBackup: { onRevealBackup(model) }
                             )
@@ -468,6 +495,7 @@ private struct ProviderModelRow: View {
     let lifecycleStatus: ModelLifecycleStatus
     let onBackup: () -> Void
     let onArchive: () -> Void
+    let onRestore: () -> Void
     let onRevealLocal: () -> Void
     let onRevealBackup: () -> Void
 
@@ -514,6 +542,7 @@ private struct ProviderModelRow: View {
                 status: lifecycleStatus,
                 onBackup: onBackup,
                 onArchive: onArchive,
+                onRestore: onRestore,
                 onRevealLocal: onRevealLocal,
                 onRevealBackup: onRevealBackup
             )
@@ -528,6 +557,7 @@ private struct ModelActionMenu: View {
     let status: ModelLifecycleStatus
     let onBackup: () -> Void
     let onArchive: () -> Void
+    let onRestore: () -> Void
     let onRevealLocal: () -> Void
     let onRevealBackup: () -> Void
 
@@ -546,8 +576,8 @@ private struct ModelActionMenu: View {
 
             Button("Archive", action: onArchive)
                 .disabled(!status.canTriggerArchive)
-            Button("Restore") {}
-                .disabled(true)
+            Button("Restore", action: onRestore)
+                .disabled(!status.canTriggerRestore)
         } label: {
             Label("Actions", systemImage: "ellipsis.circle")
         }
@@ -592,9 +622,9 @@ private struct LifecycleStatusSummary: View {
 
     private var color: Color {
         switch status.state {
-        case .backupFailed, .archiveFailed, .restoreConflict, .providerNotReady:
+        case .backupFailed, .archiveFailed, .restoreFailed, .restoreConflict, .providerNotReady:
             return .red
-        case .backingUp, .archiving:
+        case .backingUp, .archiving, .restoring:
             return .orange
         case .backedUp, .restorable:
             return .green

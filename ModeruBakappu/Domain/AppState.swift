@@ -308,6 +308,8 @@ enum ModelLifecycleState: Equatable {
     case archiving
     case archiveFailed(String)
     case archived(BackupRecord)
+    case restoring
+    case restoreFailed(String)
     case restorable(BackupRecord)
     case missingBackupDrive(BackupRecord)
     case restoreConflict(String)
@@ -332,6 +334,10 @@ enum ModelLifecycleState: Equatable {
             return "Archive Failed"
         case .archived:
             return "Archived"
+        case .restoring:
+            return "Restoring"
+        case .restoreFailed:
+            return "Restore Failed"
         case .restorable:
             return "Restorable"
         case .missingBackupDrive:
@@ -363,6 +369,10 @@ enum ModelLifecycleState: Equatable {
             return message
         case let .archived(record):
             return "Local data removed; backup is at \(record.backupRelativePath)."
+        case .restoring:
+            return "Copying and verifying local contents."
+        case let .restoreFailed(message):
+            return message
         case let .restorable(record):
             return "Can restore from \(record.backupRelativePath)."
         case let .missingBackupDrive(record):
@@ -382,7 +392,16 @@ struct ModelLifecycleStatus: Equatable {
         switch state {
         case .localOnly, .backedUp, .backupFailed, .archiveFailed:
             return backupState != .inProgress
-        case .backupUnavailable, .backingUp, .archiving, .archived, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+        case .backupUnavailable, .backingUp, .archiving, .archived, .restoring, .restoreFailed, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+            return false
+        }
+    }
+
+    var canTriggerRestore: Bool {
+        switch state {
+        case .restorable, .restoreFailed:
+            return true
+        case .localOnly, .backedUp, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
             return false
         }
     }

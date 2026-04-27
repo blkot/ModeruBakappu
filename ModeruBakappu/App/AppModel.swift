@@ -31,8 +31,10 @@ final class AppModel: ObservableObject {
     private var backupBookmarkIsStale = false
     private var activeBackupIDs: Set<String> = []
     private var activeArchiveIDs: Set<String> = []
+    private var activeRestoreIDs: Set<String> = []
     private var backupFailures: [String: String] = [:]
     private var archiveFailures: [String: String] = [:]
+    private var restoreFailures: [String: String] = [:]
     private var lastBackupValidationFailure: String?
     private let backupRootIDDefaultsKey = "ModeruBakappu.backupRootID"
 
@@ -242,8 +244,12 @@ final class AppModel: ObservableObject {
 
         if activeArchiveIDs.contains(model.id) {
             lifecycleState = .archiving
+        } else if activeRestoreIDs.contains(model.id) {
+            lifecycleState = .restoring
         } else if let message = archiveFailures[model.id] {
             lifecycleState = .archiveFailed(message)
+        } else if let message = restoreFailures[model.id] {
+            lifecycleState = .restoreFailed(message)
         } else {
             switch backupState {
             case .ready:
@@ -254,7 +260,11 @@ final class AppModel: ObservableObject {
                 lifecycleState = .backingUp
             case let .backedUp(record):
                 if record.effectiveLocalState == .archived {
-                    lifecycleState = backupDriveState == .online ? .restorable(record) : .missingBackupDrive(record)
+                    if fileManager.fileExists(atPath: model.folderURL.path) {
+                        lifecycleState = .restoreConflict("A local folder exists, but the backup index still marks this model archived.")
+                    } else {
+                        lifecycleState = backupDriveState == .online ? .restorable(record) : .missingBackupDrive(record)
+                    }
                 } else {
                     lifecycleState = .backedUp(record)
                 }
@@ -313,6 +323,7 @@ final class AppModel: ObservableObject {
         activeArchiveIDs.insert(model.id)
         archiveFailures[model.id] = nil
         backupFailures[model.id] = nil
+        restoreFailures[model.id] = nil
         objectWillChange.send()
 
         let backupCoordinator = self.backupCoordinator
@@ -341,6 +352,50 @@ final class AppModel: ObservableObject {
 
             Task { @MainActor in
                 self.completeArchive(result, for: model.id)
+            }
+        }
+    }
+
+    func restore(model: DiscoveredModel) {
+        guard backupDriveState == .online,
+              let backupFolderURL,
+              lifecycleStatus(for: model).canTriggerRestore,
+              let record = backupRecords[model.id],
+              let configuration = configuration(for: ModelProvider(rawValue: record.source) ?? .custom),
+              let sourceFolderURL = configuration.folderURL
+        else {
+            return
+        }
+
+        activeRestoreIDs.insert(model.id)
+        restoreFailures[model.id] = nil
+        objectWillChange.send()
+
+        let backupCoordinator = self.backupCoordinator
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let sourceAccess = sourceFolderURL.startAccessingSecurityScopedResource()
+            let backupAccess = backupFolderURL.startAccessingSecurityScopedResource()
+
+            defer {
+                if sourceAccess {
+                    sourceFolderURL.stopAccessingSecurityScopedResource()
+                }
+                if backupAccess {
+                    backupFolderURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let result = Result {
+                try backupCoordinator.restore(
+                    record: record,
+                    from: backupFolderURL,
+                    to: sourceFolderURL
+                )
+            }
+
+            Task { @MainActor in
+                self.completeRestore(result, for: model.id)
             }
         }
     }
@@ -496,6 +551,26 @@ final class AppModel: ObservableObject {
             }
         case let .failure(error):
             archiveFailures[modelID] = error.localizedDescription
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func completeRestore(_ result: Result<BackupRecord, Error>, for modelID: String) {
+        activeRestoreIDs.remove(modelID)
+        objectWillChange.send()
+
+        switch result {
+        case let .success(record):
+            backupRecords[modelID] = record
+            restoreFailures[modelID] = nil
+            do {
+                try backupIndexStore.saveIndex(backupRecords)
+                refreshModelDiscovery()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case let .failure(error):
+            restoreFailures[modelID] = error.localizedDescription
             errorMessage = error.localizedDescription
         }
     }

@@ -9,7 +9,9 @@ import Foundation
 
 enum BackupCoordinatorError: LocalizedError {
     case backupRootUnavailable
+    case sourceRootUnavailable
     case destinationAlreadyExists
+    case restoreDestinationAlreadyExists
     case verificationFailed
     case sourceRemovalFailed(String)
 
@@ -17,8 +19,12 @@ enum BackupCoordinatorError: LocalizedError {
         switch self {
         case .backupRootUnavailable:
             return "The configured backup root is not currently available."
+        case .sourceRootUnavailable:
+            return "The configured source folder is not currently available."
         case .destinationAlreadyExists:
             return "A backup already exists at the planned destination."
+        case .restoreDestinationAlreadyExists:
+            return "A local folder already exists at the restore destination."
         case .verificationFailed:
             return "The copied backup did not match the source payload."
         case let .sourceRemovalFailed(message):
@@ -68,6 +74,47 @@ final class BackupCoordinator {
             localState: .archived,
             archivedAt: .now,
             restoredAt: backupRecord.restoredAt
+        )
+    }
+
+    func restore(record: BackupRecord, from backupRoot: URL, to sourceRoot: URL) throws -> BackupRecord {
+        try verifyBackup(record: record, in: backupRoot)
+
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: sourceRoot.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw BackupCoordinatorError.sourceRootUnavailable
+        }
+
+        let backupURL = backupRoot.appendingPathComponent(record.backupRelativePath, isDirectory: true)
+        let restoreURL = sourceRoot.appendingPathComponent(record.relativePath, isDirectory: true)
+
+        if fileManager.fileExists(atPath: restoreURL.path) {
+            throw BackupCoordinatorError.restoreDestinationAlreadyExists
+        }
+
+        let parentURL = restoreURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
+        try fileManager.copyItem(at: backupURL, to: restoreURL)
+
+        let payload = try directoryPayload(in: restoreURL)
+        guard payload.fileCount == record.fileCount,
+              payload.sizeBytes == record.sizeBytes
+        else {
+            throw BackupCoordinatorError.verificationFailed
+        }
+
+        return BackupRecord(
+            modelID: record.modelID,
+            source: record.source,
+            displayName: record.displayName,
+            relativePath: record.relativePath,
+            backupRelativePath: record.backupRelativePath,
+            sizeBytes: record.sizeBytes,
+            fileCount: record.fileCount,
+            backedUpAt: record.backedUpAt,
+            localState: .present,
+            archivedAt: record.archivedAt,
+            restoredAt: .now
         )
     }
 
