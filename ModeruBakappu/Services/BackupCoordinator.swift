@@ -14,6 +14,7 @@ enum BackupCoordinatorError: LocalizedError {
     case restoreDestinationAlreadyExists
     case verificationFailed
     case sourceRemovalFailed(String)
+    case backupRemovalFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +29,8 @@ enum BackupCoordinatorError: LocalizedError {
         case .verificationFailed:
             return "The copied backup did not match the source payload."
         case let .sourceRemovalFailed(message):
+            return message
+        case let .backupRemovalFailed(message):
             return message
         }
     }
@@ -116,6 +119,45 @@ final class BackupCoordinator {
             archivedAt: record.archivedAt,
             restoredAt: .now
         )
+    }
+
+    func deleteLocalCopy(model: DiscoveredModel, to backupRoot: URL, existingRecord: BackupRecord) throws -> BackupRecord {
+        try verifyBackup(record: existingRecord, in: backupRoot)
+
+        do {
+            try fileManager.removeItem(at: model.folderURL)
+        } catch {
+            throw BackupCoordinatorError.sourceRemovalFailed(
+                "The backup was verified, but the local model could not be removed: \(error.localizedDescription)"
+            )
+        }
+
+        return BackupRecord(
+            modelID: existingRecord.modelID,
+            source: existingRecord.source,
+            displayName: existingRecord.displayName,
+            relativePath: existingRecord.relativePath,
+            backupRelativePath: existingRecord.backupRelativePath,
+            sizeBytes: existingRecord.sizeBytes,
+            fileCount: existingRecord.fileCount,
+            backedUpAt: existingRecord.backedUpAt,
+            localState: .archived,
+            archivedAt: .now,
+            restoredAt: existingRecord.restoredAt
+        )
+    }
+
+    func deleteBackup(record: BackupRecord, from backupRoot: URL) throws {
+        try verifyBackup(record: record, in: backupRoot)
+
+        let backupURL = backupRoot.appendingPathComponent(record.backupRelativePath, isDirectory: true)
+        do {
+            try fileManager.removeItem(at: backupURL)
+        } catch {
+            throw BackupCoordinatorError.backupRemovalFailed(
+                "The backup payload could not be removed: \(error.localizedDescription)"
+            )
+        }
     }
 
     private func copyAndVerifyBackup(model: DiscoveredModel, to backupRoot: URL) throws -> BackupRecord {

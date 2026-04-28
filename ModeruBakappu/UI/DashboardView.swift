@@ -10,8 +10,7 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var selectedProvider: ModelProvider = .lmStudio
-    @State private var pendingArchiveRequest: ModelActionRequest?
-    @State private var pendingRestoreRequest: ModelActionRequest?
+    @State private var pendingActionSheet: ModelActionSheet?
 
     private var selectedConfiguration: ModelSourceConfiguration? {
         appModel.sourceConfigurations.first { $0.provider == selectedProvider }
@@ -43,27 +42,51 @@ struct DashboardView: View {
                 selectedProvider = firstProvider
             }
         }
-        .sheet(item: $pendingArchiveRequest) { request in
-            ArchiveConfirmationSheet(
-                provider: request.provider,
-                model: request.model,
-                onCancel: { pendingArchiveRequest = nil },
-                onArchive: {
-                    pendingArchiveRequest = nil
-                    appModel.archive(model: request.model)
-                }
-            )
-        }
-        .sheet(item: $pendingRestoreRequest) { request in
-            RestoreConfirmationSheet(
-                provider: request.provider,
-                model: request.model,
-                onCancel: { pendingRestoreRequest = nil },
-                onRestore: {
-                    pendingRestoreRequest = nil
-                    appModel.restore(model: request.model)
-                }
-            )
+        .sheet(item: $pendingActionSheet) { sheet in
+            switch sheet {
+            case let .archive(request):
+                ArchiveConfirmationSheet(
+                    provider: request.provider,
+                    model: request.model,
+                    onCancel: { pendingActionSheet = nil },
+                    onArchive: {
+                        pendingActionSheet = nil
+                        appModel.archive(model: request.model)
+                    }
+                )
+            case let .restore(request):
+                RestoreConfirmationSheet(
+                    provider: request.provider,
+                    model: request.model,
+                    onCancel: { pendingActionSheet = nil },
+                    onRestore: {
+                        pendingActionSheet = nil
+                        appModel.restore(model: request.model)
+                    }
+                )
+            case let .deleteLocal(request):
+                DeleteLocalConfirmationSheet(
+                    provider: request.provider,
+                    model: request.model,
+                    onCancel: { pendingActionSheet = nil },
+                    onDelete: {
+                        pendingActionSheet = nil
+                        appModel.deleteLocalCopy(model: request.model)
+                    }
+                )
+            case let .deleteBackup(request):
+                DeleteBackupConfirmationSheet(
+                    provider: request.provider,
+                    model: request.model,
+                    backupRelativePath: request.backupRelativePath ?? request.model.relativePath,
+                    requiresTypedConfirmation: request.requiresTypedConfirmation,
+                    onCancel: { pendingActionSheet = nil },
+                    onDelete: {
+                        pendingActionSheet = nil
+                        appModel.deleteBackup(model: request.model)
+                    }
+                )
+            }
         }
     }
 
@@ -168,8 +191,20 @@ struct DashboardView: View {
                     models: appModel.displayModels(for: configuration),
                     lifecycleStatus: { appModel.lifecycleStatus(for: $0) },
                     onBackup: { appModel.backup(model: $0) },
-                    onArchive: { pendingArchiveRequest = ModelActionRequest(provider: configuration.provider, model: $0) },
-                    onRestore: { pendingRestoreRequest = ModelActionRequest(provider: configuration.provider, model: $0) },
+                    onArchive: { pendingActionSheet = .archive(ModelActionRequest(provider: configuration.provider, model: $0)) },
+                    onRestore: { pendingActionSheet = .restore(ModelActionRequest(provider: configuration.provider, model: $0)) },
+                    onDeleteLocal: { pendingActionSheet = .deleteLocal(ModelActionRequest(provider: configuration.provider, model: $0)) },
+                    onDeleteBackup: { model in
+                        let record = appModel.backupRecords[model.id]
+                        pendingActionSheet = .deleteBackup(
+                            ModelActionRequest(
+                                provider: configuration.provider,
+                                model: model,
+                                backupRelativePath: record?.backupRelativePath,
+                                requiresTypedConfirmation: record?.effectiveLocalState == .archived
+                            )
+                        )
+                    },
                     onRevealLocal: { appModel.revealLocalModel($0) },
                     onRevealBackup: { appModel.revealBackup(for: $0) }
                 )
@@ -207,9 +242,31 @@ struct DashboardView: View {
 private struct ModelActionRequest: Identifiable {
     let provider: ModelProvider
     let model: DiscoveredModel
+    var backupRelativePath: String?
+    var requiresTypedConfirmation = false
 
     var id: String {
-        "\(provider.rawValue):\(model.id)"
+        "\(provider.rawValue):\(model.id):\(requiresTypedConfirmation)"
+    }
+}
+
+private enum ModelActionSheet: Identifiable {
+    case archive(ModelActionRequest)
+    case restore(ModelActionRequest)
+    case deleteLocal(ModelActionRequest)
+    case deleteBackup(ModelActionRequest)
+
+    var id: String {
+        switch self {
+        case let .archive(request):
+            return "archive:\(request.id)"
+        case let .restore(request):
+            return "restore:\(request.id)"
+        case let .deleteLocal(request):
+            return "delete-local:\(request.id)"
+        case let .deleteBackup(request):
+            return "delete-backup:\(request.id)"
+        }
     }
 }
 
@@ -303,9 +360,130 @@ private struct RestoreConfirmationSheet: View {
     }
 }
 
+private struct DeleteLocalConfirmationSheet: View {
+    let provider: ModelProvider
+    let model: DiscoveredModel
+    let onCancel: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                DestructiveActionIcon(systemName: "trash")
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Delete Local Copy?")
+                        .font(.title3.weight(.semibold))
+                    Text("The verified backup remains available on the backup drive.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ModelActionInfoFrame(provider: provider, model: model)
+
+            Text("This removes the local model folder from this Mac. The verified backup remains on the backup drive and can be restored later.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Delete Local Copy", role: .destructive, action: onDelete)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+private struct DeleteBackupConfirmationSheet: View {
+    let provider: ModelProvider
+    let model: DiscoveredModel
+    let backupRelativePath: String
+    let requiresTypedConfirmation: Bool
+    let onCancel: () -> Void
+    let onDelete: () -> Void
+
+    @State private var confirmationText = ""
+
+    private var canDelete: Bool {
+        !requiresTypedConfirmation || confirmationText == "DELETE"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                DestructiveActionIcon(systemName: "externaldrive.badge.minus")
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Delete Backup?")
+                        .font(.title3.weight(.semibold))
+                    Text(requiresTypedConfirmation ? "This may remove the only known copy." : "The local model remains on this Mac.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ModelActionInfoFrame(
+                provider: provider,
+                model: model,
+                pathTitle: "Backup Path",
+                pathValue: backupRelativePath
+            )
+
+            Text("This removes the backup copy from the selected backup drive. This cannot be restored unless another copy exists.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if requiresTypedConfirmation {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Type DELETE to confirm.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    TextField("DELETE", text: $confirmationText)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Delete Backup", role: .destructive, action: onDelete)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canDelete)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+}
+
+private struct DestructiveActionIcon: View {
+    let systemName: String
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.title2)
+            .foregroundStyle(.white)
+            .frame(width: 42, height: 42)
+            .background(Color.red.opacity(0.9), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
 private struct ModelActionInfoFrame: View {
     let provider: ModelProvider
     let model: DiscoveredModel
+    var pathTitle = "Path"
+    var pathValue: String?
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 9) {
@@ -326,9 +504,9 @@ private struct ModelActionInfoFrame: View {
             }
 
             GridRow {
-                Text("Path")
+                Text(pathTitle)
                     .foregroundStyle(.secondary)
-                Text(model.relativePath)
+                Text(pathValue ?? model.relativePath)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -554,6 +732,8 @@ private struct ModelListView: View {
     let onBackup: (DiscoveredModel) -> Void
     let onArchive: (DiscoveredModel) -> Void
     let onRestore: (DiscoveredModel) -> Void
+    let onDeleteLocal: (DiscoveredModel) -> Void
+    let onDeleteBackup: (DiscoveredModel) -> Void
     let onRevealLocal: (DiscoveredModel) -> Void
     let onRevealBackup: (DiscoveredModel) -> Void
 
@@ -596,6 +776,8 @@ private struct ModelListView: View {
                                 onBackup: { onBackup(model) },
                                 onArchive: { onArchive(model) },
                                 onRestore: { onRestore(model) },
+                                onDeleteLocal: { onDeleteLocal(model) },
+                                onDeleteBackup: { onDeleteBackup(model) },
                                 onRevealLocal: { onRevealLocal(model) },
                                 onRevealBackup: { onRevealBackup(model) }
                             )
@@ -615,6 +797,8 @@ private struct ProviderModelRow: View {
     let onBackup: () -> Void
     let onArchive: () -> Void
     let onRestore: () -> Void
+    let onDeleteLocal: () -> Void
+    let onDeleteBackup: () -> Void
     let onRevealLocal: () -> Void
     let onRevealBackup: () -> Void
 
@@ -662,6 +846,8 @@ private struct ProviderModelRow: View {
                 onBackup: onBackup,
                 onArchive: onArchive,
                 onRestore: onRestore,
+                onDeleteLocal: onDeleteLocal,
+                onDeleteBackup: onDeleteBackup,
                 onRevealLocal: onRevealLocal,
                 onRevealBackup: onRevealBackup
             )
@@ -677,6 +863,8 @@ private struct ModelActionMenu: View {
     let onBackup: () -> Void
     let onArchive: () -> Void
     let onRestore: () -> Void
+    let onDeleteLocal: () -> Void
+    let onDeleteBackup: () -> Void
     let onRevealLocal: () -> Void
     let onRevealBackup: () -> Void
 
@@ -702,6 +890,15 @@ private struct ModelActionMenu: View {
             Button("Restore", action: onRestore)
                 .disabled(!status.canTriggerRestore)
                 .help("Copy the archived model back to this Mac from the backup drive.")
+
+            Divider()
+
+            Button("Delete Local Copy", role: .destructive, action: onDeleteLocal)
+                .disabled(!status.canDeleteLocalCopy)
+                .help("Remove only the local model folder. The verified backup remains available.")
+            Button("Delete Backup", role: .destructive, action: onDeleteBackup)
+                .disabled(!status.canDeleteBackup)
+                .help("Remove only the backup copy from the selected backup drive.")
         } label: {
             Label("Actions", systemImage: "ellipsis.circle")
         }
@@ -767,6 +964,14 @@ private struct LifecycleStatusSummary: View {
             return "ModeruBakappu is copying the archived model back to this Mac and verifying it."
         case let .restoreFailed(message):
             return "Restore failed: \(message)"
+        case .deletingLocal:
+            return "ModeruBakappu is removing the local model folder. The verified backup remains available."
+        case let .deleteLocalFailed(message):
+            return "Delete local copy failed: \(message)"
+        case .deletingBackup:
+            return "ModeruBakappu is removing the backup payload from the selected backup drive."
+        case let .deleteBackupFailed(message):
+            return "Delete backup failed: \(message)"
         case .restorable:
             return "This model is archived: the local copy was removed, and Restore copies it back from the backup drive."
         case .missingBackupDrive:
@@ -782,9 +987,9 @@ private struct LifecycleStatusSummary: View {
 
     private var color: Color {
         switch status.state {
-        case .backupFailed, .archiveFailed, .restoreFailed, .restoreConflict, .providerNotReady:
+        case .backupFailed, .archiveFailed, .restoreFailed, .deleteLocalFailed, .deleteBackupFailed, .restoreConflict, .providerNotReady:
             return .red
-        case .backingUp, .archiving, .restoring:
+        case .backingUp, .archiving, .restoring, .deletingLocal, .deletingBackup:
             return .orange
         case .backedUp:
             return .green
