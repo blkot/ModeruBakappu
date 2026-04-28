@@ -5,6 +5,7 @@
 //  Created by Codex on 2026/4/19.
 //
 
+import AppKit
 import Combine
 import Foundation
 
@@ -29,7 +30,15 @@ final class AppModel: ObservableObject {
 
     private var backupBookmarkIsStale = false
     private var activeBackupIDs: Set<String> = []
+    private var activeArchiveIDs: Set<String> = []
+    private var activeRestoreIDs: Set<String> = []
+    private var activeDeleteLocalIDs: Set<String> = []
+    private var activeDeleteBackupIDs: Set<String> = []
     private var backupFailures: [String: String] = [:]
+    private var archiveFailures: [String: String] = [:]
+    private var restoreFailures: [String: String] = [:]
+    private var deleteLocalFailures: [String: String] = [:]
+    private var deleteBackupFailures: [String: String] = [:]
     private var lastBackupValidationFailure: String?
     private let backupRootIDDefaultsKey = "ModeruBakappu.backupRootID"
 
@@ -178,6 +187,42 @@ final class AppModel: ObservableObject {
         errorMessage = nil
     }
 
+    func displayModels(for configuration: ModelSourceConfiguration) -> [DiscoveredModel] {
+        var models = configuration.models
+        let localIDs = Set(models.map(\.id))
+
+        let archivedModels = backupRecords.values.compactMap { record -> DiscoveredModel? in
+            guard record.source == configuration.provider.rawValue,
+                  record.effectiveLocalState == .archived,
+                  backupRecordIsAvailable(record),
+                  !localIDs.contains(record.modelID),
+                  let folderURL = configuration.folderURL
+            else {
+                return nil
+            }
+
+            let pathComponents = record.relativePath.split(separator: "/").map(String.init)
+            let publisher = pathComponents.count > 1 ? pathComponents.first : nil
+
+            return DiscoveredModel(
+                id: record.modelID,
+                source: record.source,
+                publisher: publisher,
+                displayName: record.displayName,
+                folderURL: folderURL.appendingPathComponent(record.relativePath, isDirectory: true),
+                relativePath: record.relativePath,
+                sizeBytes: record.sizeBytes,
+                fileCount: record.fileCount,
+                lastModified: record.archivedAt ?? record.backedUpAt
+            )
+        }
+
+        models.append(contentsOf: archivedModels)
+        return models.sorted {
+            ($0.publisher ?? "", $0.displayName.localizedLowercase) < ($1.publisher ?? "", $1.displayName.localizedLowercase)
+        }
+    }
+
     func backupState(for model: DiscoveredModel) -> ModelBackupState {
         if let message = backupFailures[model.id] {
             return .failed(message)
@@ -188,7 +233,13 @@ final class AppModel: ObservableObject {
         }
 
         if let record = backupRecords[model.id] {
-            return .backedUp(record)
+            if backupRecordIsAvailable(record) {
+                return .backedUp(record)
+            }
+
+            if backupDriveState == .online {
+                return .ready
+            }
         }
 
         guard backupDriveState == .online else {
@@ -198,6 +249,68 @@ final class AppModel: ObservableObject {
         return .ready
     }
 
+    private func backupRecordIsAvailable(_ record: BackupRecord) -> Bool {
+        guard backupDriveState == .online,
+              let backupFolderURL
+        else {
+            return false
+        }
+
+        let backupURL = backupFolderURL.appendingPathComponent(record.backupRelativePath, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        return fileManager.fileExists(atPath: backupURL.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    func lifecycleStatus(for model: DiscoveredModel) -> ModelLifecycleStatus {
+        let backupState = backupState(for: model)
+        let lifecycleState: ModelLifecycleState
+
+        if activeArchiveIDs.contains(model.id) {
+            lifecycleState = .archiving
+        } else if activeRestoreIDs.contains(model.id) {
+            lifecycleState = .restoring
+        } else if activeDeleteLocalIDs.contains(model.id) {
+            lifecycleState = .deletingLocal
+        } else if activeDeleteBackupIDs.contains(model.id) {
+            lifecycleState = .deletingBackup
+        } else if let message = archiveFailures[model.id] {
+            lifecycleState = .archiveFailed(message)
+        } else if let message = restoreFailures[model.id] {
+            lifecycleState = .restoreFailed(message)
+        } else if let message = deleteLocalFailures[model.id] {
+            lifecycleState = .deleteLocalFailed(message)
+        } else if let message = deleteBackupFailures[model.id] {
+            lifecycleState = .deleteBackupFailed(message)
+        } else {
+            switch backupState {
+            case .ready:
+                lifecycleState = .localOnly
+            case .unavailable:
+                lifecycleState = .backupUnavailable
+            case .inProgress:
+                lifecycleState = .backingUp
+            case let .backedUp(record):
+                if record.effectiveLocalState == .archived {
+                    if fileManager.fileExists(atPath: model.folderURL.path) {
+                        lifecycleState = .restoreConflict("A local folder exists, but the backup index still marks this model archived.")
+                    } else {
+                        lifecycleState = backupDriveState == .online ? .restorable(record) : .missingBackupDrive(record)
+                    }
+                } else {
+                    lifecycleState = .backedUp(record)
+                }
+            case let .failed(message):
+                lifecycleState = .backupFailed(message)
+            }
+        }
+
+        return ModelLifecycleStatus(
+            state: lifecycleState,
+            providerReadiness: .ready,
+            backupState: backupState
+        )
+    }
+
     func backup(model: DiscoveredModel) {
         guard backupState(for: model).canTriggerBackup, let backupFolderURL else {
             return
@@ -205,6 +318,7 @@ final class AppModel: ObservableObject {
 
         activeBackupIDs.insert(model.id)
         backupFailures[model.id] = nil
+        objectWillChange.send()
 
         let backupCoordinator = self.backupCoordinator
 
@@ -226,6 +340,189 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 self.completeBackup(result, for: model.id)
             }
+        }
+    }
+
+    func archive(model: DiscoveredModel) {
+        guard backupDriveState == .online,
+              let backupFolderURL,
+              lifecycleStatus(for: model).canTriggerArchive
+        else {
+            return
+        }
+
+        activeArchiveIDs.insert(model.id)
+        archiveFailures[model.id] = nil
+        backupFailures[model.id] = nil
+        restoreFailures[model.id] = nil
+        deleteLocalFailures[model.id] = nil
+        deleteBackupFailures[model.id] = nil
+        objectWillChange.send()
+
+        let backupCoordinator = self.backupCoordinator
+        let existingRecord = backupRecords[model.id]
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let sourceAccess = model.folderURL.startAccessingSecurityScopedResource()
+            let backupAccess = backupFolderURL.startAccessingSecurityScopedResource()
+
+            defer {
+                if sourceAccess {
+                    model.folderURL.stopAccessingSecurityScopedResource()
+                }
+                if backupAccess {
+                    backupFolderURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let result = Result {
+                try backupCoordinator.archive(
+                    model: model,
+                    to: backupFolderURL,
+                    existingRecord: existingRecord
+                )
+            }
+
+            Task { @MainActor in
+                self.completeArchive(result, for: model.id)
+            }
+        }
+    }
+
+    func restore(model: DiscoveredModel) {
+        guard backupDriveState == .online,
+              let backupFolderURL,
+              lifecycleStatus(for: model).canTriggerRestore,
+              let record = backupRecords[model.id],
+              let configuration = configuration(for: ModelProvider(rawValue: record.source) ?? .custom),
+              let sourceFolderURL = configuration.folderURL
+        else {
+            return
+        }
+
+        activeRestoreIDs.insert(model.id)
+        restoreFailures[model.id] = nil
+        objectWillChange.send()
+
+        let backupCoordinator = self.backupCoordinator
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let sourceAccess = sourceFolderURL.startAccessingSecurityScopedResource()
+            let backupAccess = backupFolderURL.startAccessingSecurityScopedResource()
+
+            defer {
+                if sourceAccess {
+                    sourceFolderURL.stopAccessingSecurityScopedResource()
+                }
+                if backupAccess {
+                    backupFolderURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let result = Result {
+                try backupCoordinator.restore(
+                    record: record,
+                    from: backupFolderURL,
+                    to: sourceFolderURL
+                )
+            }
+
+            Task { @MainActor in
+                self.completeRestore(result, for: model.id)
+            }
+        }
+    }
+
+    func deleteLocalCopy(model: DiscoveredModel) {
+        guard backupDriveState == .online,
+              let backupFolderURL,
+              lifecycleStatus(for: model).canDeleteLocalCopy,
+              let record = backupRecords[model.id]
+        else {
+            return
+        }
+
+        activeDeleteLocalIDs.insert(model.id)
+        deleteLocalFailures[model.id] = nil
+        objectWillChange.send()
+
+        let backupCoordinator = self.backupCoordinator
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let sourceAccess = model.folderURL.startAccessingSecurityScopedResource()
+            let backupAccess = backupFolderURL.startAccessingSecurityScopedResource()
+
+            defer {
+                if sourceAccess {
+                    model.folderURL.stopAccessingSecurityScopedResource()
+                }
+                if backupAccess {
+                    backupFolderURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let result = Result {
+                try backupCoordinator.deleteLocalCopy(
+                    model: model,
+                    to: backupFolderURL,
+                    existingRecord: record
+                )
+            }
+
+            Task { @MainActor in
+                self.completeDeleteLocalCopy(result, for: model.id)
+            }
+        }
+    }
+
+    func deleteBackup(model: DiscoveredModel) {
+        guard backupDriveState == .online,
+              let backupFolderURL,
+              lifecycleStatus(for: model).canDeleteBackup,
+              let record = backupRecords[model.id]
+        else {
+            return
+        }
+
+        activeDeleteBackupIDs.insert(model.id)
+        deleteBackupFailures[model.id] = nil
+        objectWillChange.send()
+
+        let backupCoordinator = self.backupCoordinator
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let backupAccess = backupFolderURL.startAccessingSecurityScopedResource()
+
+            defer {
+                if backupAccess {
+                    backupFolderURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let result = Result {
+                try backupCoordinator.deleteBackup(record: record, from: backupFolderURL)
+            }
+
+            Task { @MainActor in
+                self.completeDeleteBackup(result, for: model.id)
+            }
+        }
+    }
+
+    func revealLocalModel(_ model: DiscoveredModel) {
+        NSWorkspace.shared.activateFileViewerSelecting([model.folderURL])
+    }
+
+    func revealBackup(for model: DiscoveredModel) {
+        guard let backupFolderURL,
+              let record = backupRecords[model.id]
+        else {
+            return
+        }
+
+        let backupURL = backupFolderURL.appendingPathComponent(record.backupRelativePath, isDirectory: true)
+        withScopedAccess(to: backupFolderURL) {
+            NSWorkspace.shared.activateFileViewerSelecting([backupURL])
         }
     }
 
@@ -329,6 +626,7 @@ final class AppModel: ObservableObject {
 
     private func completeBackup(_ result: Result<BackupRecord, Error>, for modelID: String) {
         activeBackupIDs.remove(modelID)
+        objectWillChange.send()
 
         switch result {
         case let .success(record):
@@ -341,6 +639,91 @@ final class AppModel: ObservableObject {
             }
         case let .failure(error):
             backupFailures[modelID] = error.localizedDescription
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func completeArchive(_ result: Result<BackupRecord, Error>, for modelID: String) {
+        activeArchiveIDs.remove(modelID)
+        objectWillChange.send()
+
+        switch result {
+        case let .success(record):
+            backupRecords[modelID] = record
+            backupFailures[modelID] = nil
+            archiveFailures[modelID] = nil
+            do {
+                try backupIndexStore.saveIndex(backupRecords)
+                refreshModelDiscovery()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case let .failure(error):
+            archiveFailures[modelID] = error.localizedDescription
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func completeRestore(_ result: Result<BackupRecord, Error>, for modelID: String) {
+        activeRestoreIDs.remove(modelID)
+        objectWillChange.send()
+
+        switch result {
+        case let .success(record):
+            backupRecords[modelID] = record
+            restoreFailures[modelID] = nil
+            do {
+                try backupIndexStore.saveIndex(backupRecords)
+                refreshModelDiscovery()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case let .failure(error):
+            restoreFailures[modelID] = error.localizedDescription
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func completeDeleteLocalCopy(_ result: Result<BackupRecord, Error>, for modelID: String) {
+        activeDeleteLocalIDs.remove(modelID)
+        objectWillChange.send()
+
+        switch result {
+        case let .success(record):
+            backupRecords[modelID] = record
+            deleteLocalFailures[modelID] = nil
+            do {
+                try backupIndexStore.saveIndex(backupRecords)
+                refreshModelDiscovery()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case let .failure(error):
+            deleteLocalFailures[modelID] = error.localizedDescription
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func completeDeleteBackup(_ result: Result<Void, Error>, for modelID: String) {
+        activeDeleteBackupIDs.remove(modelID)
+        objectWillChange.send()
+
+        switch result {
+        case .success:
+            backupRecords[modelID] = nil
+            backupFailures[modelID] = nil
+            archiveFailures[modelID] = nil
+            restoreFailures[modelID] = nil
+            deleteLocalFailures[modelID] = nil
+            deleteBackupFailures[modelID] = nil
+            do {
+                try backupIndexStore.saveIndex(backupRecords)
+                refreshModelDiscovery()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case let .failure(error):
+            deleteBackupFailures[modelID] = error.localizedDescription
             errorMessage = error.localizedDescription
         }
     }

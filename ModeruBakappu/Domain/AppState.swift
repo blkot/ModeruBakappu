@@ -262,6 +262,187 @@ enum ModelBackupState: Equatable {
             return false
         }
     }
+
+    var backupRecord: BackupRecord? {
+        switch self {
+        case let .backedUp(record):
+            return record
+        case .unavailable, .ready, .inProgress, .failed:
+            return nil
+        }
+    }
+}
+
+enum ProviderReadinessState: Equatable {
+    case ready
+    case notReady(String)
+    case unknown(String)
+
+    var title: String {
+        switch self {
+        case .ready:
+            return "Provider Ready"
+        case .notReady:
+            return "Provider Not Ready"
+        case .unknown:
+            return "Provider Unknown"
+        }
+    }
+
+    var summary: String? {
+        switch self {
+        case .ready:
+            return nil
+        case let .notReady(message), let .unknown(message):
+            return message
+        }
+    }
+}
+
+enum ModelLifecycleState: Equatable {
+    case localOnly
+    case backedUp(BackupRecord)
+    case backupUnavailable
+    case backingUp
+    case backupFailed(String)
+    case archiving
+    case archiveFailed(String)
+    case archived(BackupRecord)
+    case restoring
+    case restoreFailed(String)
+    case deletingLocal
+    case deleteLocalFailed(String)
+    case deletingBackup
+    case deleteBackupFailed(String)
+    case restorable(BackupRecord)
+    case missingBackupDrive(BackupRecord)
+    case restoreConflict(String)
+    case providerNotReady(String)
+    case unknown(String)
+
+    var title: String {
+        switch self {
+        case .localOnly:
+            return "Local Only"
+        case .backedUp:
+            return "Backed Up"
+        case .backupUnavailable:
+            return "Backup Unavailable"
+        case .backingUp:
+            return "Backing Up"
+        case .backupFailed:
+            return "Backup Failed"
+        case .archiving:
+            return "Archiving"
+        case .archiveFailed:
+            return "Archive Failed"
+        case .archived:
+            return "Archived"
+        case .restoring:
+            return "Restoring"
+        case .restoreFailed:
+            return "Restore Failed"
+        case .deletingLocal:
+            return "Deleting Local"
+        case .deleteLocalFailed:
+            return "Delete Failed"
+        case .deletingBackup:
+            return "Deleting Backup"
+        case .deleteBackupFailed:
+            return "Delete Failed"
+        case .restorable:
+            return "Archived"
+        case .missingBackupDrive:
+            return "Drive Offline"
+        case .restoreConflict:
+            return "Restore Conflict"
+        case .providerNotReady:
+            return "Provider Not Ready"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .localOnly:
+            return "Stored only on this Mac."
+        case let .backedUp(record):
+            return "Verified backup at \(record.backupRelativePath)."
+        case .backupUnavailable:
+            return "Backup actions require an online backup drive."
+        case .backingUp:
+            return "Copying and verifying backup contents."
+        case let .backupFailed(message):
+            return message
+        case .archiving:
+            return "Copying, verifying, and preparing local removal."
+        case let .archiveFailed(message):
+            return message
+        case let .archived(record):
+            return "Local data removed; backup is at \(record.backupRelativePath)."
+        case .restoring:
+            return "Copying and verifying local contents."
+        case let .restoreFailed(message):
+            return message
+        case .deletingLocal:
+            return "Removing local model folder."
+        case let .deleteLocalFailed(message):
+            return message
+        case .deletingBackup:
+            return "Removing backup payload."
+        case let .deleteBackupFailed(message):
+            return message
+        case let .restorable(record):
+            return "Local data removed; restore is available from \(record.backupRelativePath)."
+        case let .missingBackupDrive(record):
+            return "Backup record exists at \(record.backupRelativePath), but the drive is offline."
+        case let .restoreConflict(message), let .providerNotReady(message), let .unknown(message):
+            return message
+        }
+    }
+}
+
+struct ModelLifecycleStatus: Equatable {
+    let state: ModelLifecycleState
+    let providerReadiness: ProviderReadinessState
+    let backupState: ModelBackupState
+
+    var canTriggerArchive: Bool {
+        switch state {
+        case .localOnly, .backedUp, .backupFailed, .archiveFailed:
+            return backupState != .inProgress
+        case .backupUnavailable, .backingUp, .archiving, .archived, .restoring, .restoreFailed, .deletingLocal, .deleteLocalFailed, .deletingBackup, .deleteBackupFailed, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+            return false
+        }
+    }
+
+    var canTriggerRestore: Bool {
+        switch state {
+        case .restorable, .restoreFailed:
+            return true
+        case .localOnly, .backedUp, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .deletingLocal, .deleteLocalFailed, .deletingBackup, .deleteBackupFailed, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+            return false
+        }
+    }
+
+    var canDeleteLocalCopy: Bool {
+        switch state {
+        case .backedUp, .deleteLocalFailed:
+            return true
+        case .localOnly, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .restoreFailed, .deletingLocal, .deletingBackup, .deleteBackupFailed, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+            return false
+        }
+    }
+
+    var canDeleteBackup: Bool {
+        switch state {
+        case .backedUp, .restorable, .deleteBackupFailed:
+            return true
+        case .localOnly, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .restoreFailed, .deletingLocal, .deleteLocalFailed, .deletingBackup, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+            return false
+        }
+    }
 }
 
 struct ResolvedBookmark: Equatable {
@@ -298,8 +479,20 @@ struct BackupRecord: Codable, Equatable, Identifiable {
     let sizeBytes: Int64
     let fileCount: Int
     let backedUpAt: Date
+    let localState: ModelLocalState?
+    let archivedAt: Date?
+    let restoredAt: Date?
 
     var id: String { modelID }
+
+    var effectiveLocalState: ModelLocalState {
+        localState ?? .present
+    }
+}
+
+enum ModelLocalState: String, Codable, Equatable {
+    case present
+    case archived
 }
 
 struct BackupRootMarker: Codable, Equatable {
