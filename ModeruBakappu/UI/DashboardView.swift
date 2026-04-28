@@ -1104,14 +1104,34 @@ private struct ProviderBadge: View {
     let provider: ModelProvider
 
     var body: some View {
-        Text(initials)
-            .font(.caption.weight(.bold))
-            .foregroundStyle(.white)
-            .frame(width: 34, height: 34)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(color)
-            )
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(color)
+
+            if let assetName {
+                Image(assetName)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.white)
+                    .frame(width: 21, height: 21)
+                    .accessibilityLabel(provider.displayName)
+            } else {
+                Text(initials)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 34, height: 34)
+    }
+
+    private var assetName: String? {
+        switch provider {
+        case .lmStudio:
+            return "ProviderLMStudio"
+        case .omlx, .custom:
+            return nil
+        }
     }
 
     private var initials: String {
