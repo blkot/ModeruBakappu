@@ -67,6 +67,7 @@ The app should be organized around four layers:
 
 3. **Services**
    - source discovery
+   - provider adapters for detection, discovery, and readiness rules
    - path/settings persistence
    - volume monitoring
    - backup coordination

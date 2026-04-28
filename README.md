@@ -76,7 +76,7 @@ Key areas:
 
 - `App/`: app state and lifecycle wiring
 - `Domain/`: provider, model, backup, and status types
-- `Services/`: source detection, folder picking, backup coordination, index persistence
+- `Services/`: provider adapters, source detection, folder picking, backup coordination, index persistence
 - `UI/`: onboarding, dashboard, settings, and reusable SwiftUI components
 
 ## Development
@@ -111,6 +111,7 @@ ModeruBakappu is intentionally distributed outside the App Store and currently r
 The app should continue to prioritize:
 
 - provider-specific discovery instead of generic directory guesses
+- provider adapters as the boundary for detection, discovery, and readiness rules
 - clear offline, missing, and permission states
 - copy-first backup behavior
 - verified backups before any future local-removal feature

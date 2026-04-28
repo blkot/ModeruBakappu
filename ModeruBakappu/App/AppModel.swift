@@ -24,7 +24,6 @@ final class AppModel: ObservableObject {
     private let backupIndexStore: BackupIndexStore
     private let folderPicker: FolderPicker
     private let modelSourceLocator: ModelSourceLocator
-    private let modelDiscoveryService: LMStudioDiscoveryService
     private let backupCoordinator: BackupCoordinator
     private let fileManager: FileManager
 
@@ -50,7 +49,6 @@ final class AppModel: ObservableObject {
             backupIndexStore: JSONBackupIndexStore(),
             folderPicker: OpenPanelFolderPicker(),
             modelSourceLocator: ModelSourceLocator(),
-            modelDiscoveryService: LMStudioDiscoveryService(),
             backupCoordinator: BackupCoordinator(),
             fileManager: .default
         )
@@ -61,7 +59,6 @@ final class AppModel: ObservableObject {
         backupIndexStore: BackupIndexStore,
         folderPicker: FolderPicker,
         modelSourceLocator: ModelSourceLocator,
-        modelDiscoveryService: LMStudioDiscoveryService,
         backupCoordinator: BackupCoordinator,
         fileManager: FileManager
     ) {
@@ -69,7 +66,6 @@ final class AppModel: ObservableObject {
         self.backupIndexStore = backupIndexStore
         self.folderPicker = folderPicker
         self.modelSourceLocator = modelSourceLocator
-        self.modelDiscoveryService = modelDiscoveryService
         self.backupCoordinator = backupCoordinator
         self.fileManager = fileManager
         self.sourceConfigurations = Self.supportedProviders.map { provider in
@@ -168,7 +164,7 @@ final class AppModel: ObservableObject {
 
             let result: Result<[DiscoveredModel], Error> = withScopedAccess(to: folderURL) {
                 Result {
-                    try modelDiscoveryService.discoverModels(in: folderURL, source: configuration.provider)
+                    try modelSourceLocator.discoverModels(in: folderURL, source: configuration.provider)
                 }
             }
 
@@ -306,7 +302,7 @@ final class AppModel: ObservableObject {
 
         return ModelLifecycleStatus(
             state: lifecycleState,
-            providerReadiness: .ready,
+            providerReadiness: modelSourceLocator.readiness(for: model),
             backupState: backupState
         )
     }

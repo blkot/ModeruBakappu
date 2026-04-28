@@ -75,6 +75,7 @@ Deliverable: correct provider-separated model indexing.
 
 Tasks:
 
+- route detection and discovery through provider adapters
 - read LM Studio settings for likely folder hints
 - resolve the current configured folder automatically when possible
 - detect oMLX at `~/.omlx/models`
@@ -87,6 +88,7 @@ Exit criteria:
 
 - app lists models from confirmed provider directories
 - app keeps LM Studio and oMLX records separate
+- provider-specific readiness can be surfaced without changing backup logic
 - index survives relaunch
 - permission and path failures are visible
 
