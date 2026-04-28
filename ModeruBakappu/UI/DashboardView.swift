@@ -11,7 +11,7 @@ struct DashboardView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var selectedProvider: ModelProvider = .lmStudio
     @State private var pendingArchiveRequest: ModelActionRequest?
-    @State private var pendingRestoreModel: DiscoveredModel?
+    @State private var pendingRestoreRequest: ModelActionRequest?
 
     private var selectedConfiguration: ModelSourceConfiguration? {
         appModel.sourceConfigurations.first { $0.provider == selectedProvider }
@@ -54,29 +54,17 @@ struct DashboardView: View {
                 }
             )
         }
-        .alert(
-            "Restore Model?",
-            isPresented: restoreConfirmationBinding,
-            presenting: pendingRestoreModel
-        ) { model in
-            Button("Restore") {
-                appModel.restore(model: model)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { model in
-            Text("ModeruBakappu will copy and verify \(model.displayName) back into the provider's model folder.")
-        }
-    }
-
-    private var restoreConfirmationBinding: Binding<Bool> {
-        Binding(
-            get: { pendingRestoreModel != nil },
-            set: { isPresented in
-                if !isPresented {
-                    pendingRestoreModel = nil
+        .sheet(item: $pendingRestoreRequest) { request in
+            RestoreConfirmationSheet(
+                provider: request.provider,
+                model: request.model,
+                onCancel: { pendingRestoreRequest = nil },
+                onRestore: {
+                    pendingRestoreRequest = nil
+                    appModel.restore(model: request.model)
                 }
-            }
-        )
+            )
+        }
     }
 
     private var header: some View {
@@ -181,7 +169,7 @@ struct DashboardView: View {
                     lifecycleStatus: { appModel.lifecycleStatus(for: $0) },
                     onBackup: { appModel.backup(model: $0) },
                     onArchive: { pendingArchiveRequest = ModelActionRequest(provider: configuration.provider, model: $0) },
-                    onRestore: { pendingRestoreModel = $0 },
+                    onRestore: { pendingRestoreRequest = ModelActionRequest(provider: configuration.provider, model: $0) },
                     onRevealLocal: { appModel.revealLocalModel($0) },
                     onRevealBackup: { appModel.revealBackup(for: $0) }
                 )
@@ -249,7 +237,7 @@ private struct ArchiveConfirmationSheet: View {
                 }
             }
 
-            ArchiveModelInfoFrame(provider: provider, model: model)
+            ModelActionInfoFrame(provider: provider, model: model)
 
             Text("ModeruBakappu will copy and verify this model on the backup drive, then remove the local model folder from this Mac. Use Back Up when you want a duplicate; use Archive when you want to free space on this Mac.")
                 .font(.callout)
@@ -270,7 +258,52 @@ private struct ArchiveConfirmationSheet: View {
     }
 }
 
-private struct ArchiveModelInfoFrame: View {
+private struct RestoreConfirmationSheet: View {
+    let provider: ModelProvider
+    let model: DiscoveredModel
+    let onCancel: () -> Void
+    let onRestore: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.down.doc")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(Color.blue.opacity(0.9), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Restore Model?")
+                        .font(.title3.weight(.semibold))
+                    Text("This will copy the archived model back to this Mac.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ModelActionInfoFrame(provider: provider, model: model)
+
+            Text("ModeruBakappu will copy and verify this model from the backup drive back into the provider's model folder. The archived backup remains on the backup drive.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Restore", action: onRestore)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+private struct ModelActionInfoFrame: View {
     let provider: ModelProvider
     let model: DiscoveredModel
 
