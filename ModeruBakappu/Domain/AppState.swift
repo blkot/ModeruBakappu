@@ -339,7 +339,7 @@ enum ModelLifecycleState: Equatable {
         case .restoreFailed:
             return "Restore Failed"
         case .restorable:
-            return "Restorable"
+            return "Archived"
         case .missingBackupDrive:
             return "Drive Offline"
         case .restoreConflict:
@@ -374,7 +374,7 @@ enum ModelLifecycleState: Equatable {
         case let .restoreFailed(message):
             return message
         case let .restorable(record):
-            return "Can restore from \(record.backupRelativePath)."
+            return "Local data removed; restore is available from \(record.backupRelativePath)."
         case let .missingBackupDrive(record):
             return "Backup record exists at \(record.backupRelativePath), but the drive is offline."
         case let .restoreConflict(message), let .providerNotReady(message), let .unknown(message):

@@ -735,7 +735,7 @@ private struct LifecycleStatusSummary: View {
         case let .restoreFailed(message):
             return "Restore failed: \(message)"
         case .restorable:
-            return "The local copy was removed. Restore copies it back from the backup drive."
+            return "This model is archived: the local copy was removed, and Restore copies it back from the backup drive."
         case .missingBackupDrive:
             return "This model is archived, but the backup drive is not currently available."
         case let .restoreConflict(message):
@@ -753,9 +753,9 @@ private struct LifecycleStatusSummary: View {
             return .red
         case .backingUp, .archiving, .restoring:
             return .orange
-        case .backedUp, .restorable:
+        case .backedUp:
             return .green
-        case .archived:
+        case .archived, .restorable:
             return .blue
         case .localOnly, .backupUnavailable, .missingBackupDrive, .unknown:
             return .secondary
