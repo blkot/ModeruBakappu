@@ -372,7 +372,7 @@ private struct DeleteLocalConfirmationSheet: View {
                 DestructiveActionIcon(systemName: "trash")
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Delete Local Copy?")
+                    Text("Delete Local Model?")
                         .font(.title3.weight(.semibold))
                     Text("The verified backup remains available on the backup drive.")
                         .font(.subheadline)
@@ -382,7 +382,7 @@ private struct DeleteLocalConfirmationSheet: View {
 
             ModelActionInfoFrame(provider: provider, model: model)
 
-            Text("This removes the local model folder from this Mac. The verified backup remains on the backup drive and can be restored later.")
+            Text("This removes the model files used by the provider runtime on this Mac. The verified backup remains on the backup drive and can be restored later.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -391,7 +391,7 @@ private struct DeleteLocalConfirmationSheet: View {
                 Spacer()
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Delete Local Copy", role: .destructive, action: onDelete)
+                Button("Delete Local Model", role: .destructive, action: onDelete)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -886,16 +886,16 @@ private struct ModelActionMenu: View {
 
             Button("Archive", action: onArchive)
                 .disabled(!status.canTriggerArchive)
-                .help("Copy and verify this model on the backup drive, then remove the local copy to free space.")
+                .help("Copy and verify this model on the backup drive, then remove the local model to free space.")
             Button("Restore", action: onRestore)
                 .disabled(!status.canTriggerRestore)
                 .help("Copy the archived model back to this Mac from the backup drive.")
 
             Divider()
 
-            Button("Delete Local Copy", role: .destructive, action: onDeleteLocal)
+            Button("Delete Local Model", role: .destructive, action: onDeleteLocal)
                 .disabled(!status.canDeleteLocalCopy)
-                .help("Remove only the local model folder. The verified backup remains available.")
+                .help("Remove the provider-usable model files from this Mac. The verified backup remains available.")
             Button("Delete Backup", role: .destructive, action: onDeleteBackup)
                 .disabled(!status.canDeleteBackup)
                 .help("Remove only the backup copy from the selected backup drive.")
@@ -955,7 +955,7 @@ private struct LifecycleStatusSummary: View {
         case let .backupFailed(message):
             return "Backup failed: \(message)"
         case .archiving:
-            return "ModeruBakappu is ensuring a verified backup exists, then it will remove the local copy."
+            return "ModeruBakappu is ensuring a verified backup exists, then it will remove the local model."
         case let .archiveFailed(message):
             return "Archive failed: \(message)"
         case .archived:
@@ -967,13 +967,13 @@ private struct LifecycleStatusSummary: View {
         case .deletingLocal:
             return "ModeruBakappu is removing the local model folder. The verified backup remains available."
         case let .deleteLocalFailed(message):
-            return "Delete local copy failed: \(message)"
+            return "Delete local model failed: \(message)"
         case .deletingBackup:
             return "ModeruBakappu is removing the backup payload from the selected backup drive."
         case let .deleteBackupFailed(message):
             return "Delete backup failed: \(message)"
         case .restorable:
-            return "This model is archived: the local copy was removed, and Restore copies it back from the backup drive."
+            return "This model is archived: the local model was removed, and Restore copies it back from the backup drive."
         case .missingBackupDrive:
             return "This model is archived, but the backup drive is not currently available."
         case let .restoreConflict(message):
