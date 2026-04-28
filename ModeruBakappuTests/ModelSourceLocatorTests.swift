@@ -8,6 +8,7 @@
 import XCTest
 @testable import ModeruBakappu
 
+@MainActor
 final class ModelSourceLocatorTests: XCTestCase {
     func testDetectSourcesUsesProviderAdapters() {
         let lmStudioURL = URL(fileURLWithPath: "/tmp/lm-studio", isDirectory: true)
@@ -58,6 +59,31 @@ final class ModelSourceLocatorTests: XCTestCase {
 
         XCTAssertEqual(try locator.discoverModels(in: rootURL, source: .omlx), [model])
         XCTAssertEqual(locator.readiness(for: model), .unknown("Provider-specific readiness is pending."))
+    }
+
+    func testOMLXAdapterDefaultsToUnknownReadiness() {
+        let adapter = DirectoryModelProviderAdapter(
+            provider: .omlx,
+            candidates: [],
+            pathMatchers: [],
+            readinessState: .unknown("oMLX readiness cannot be confirmed from files alone yet.")
+        )
+        let model = DiscoveredModel(
+            id: "omlx:manual/model",
+            source: ModelProvider.omlx.rawValue,
+            publisher: "manual",
+            displayName: "model",
+            folderURL: URL(fileURLWithPath: "/tmp/manual/model", isDirectory: true),
+            relativePath: "manual/model",
+            sizeBytes: 128,
+            fileCount: 2,
+            lastModified: nil
+        )
+
+        XCTAssertEqual(
+            adapter.readiness(for: model),
+            .unknown("oMLX readiness cannot be confirmed from files alone yet.")
+        )
     }
 }
 

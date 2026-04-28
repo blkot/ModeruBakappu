@@ -925,6 +925,18 @@ private struct LifecycleStatusSummary: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+
+            if status.providerReadiness != .ready {
+                HStack(spacing: 5) {
+                    Image(systemName: providerReadinessIcon)
+                        .font(.caption2.weight(.semibold))
+                    Text(status.providerReadiness.title)
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(providerReadinessColor)
+                .help(providerReadinessHelpText)
+            }
         }
         .help(helpText)
     }
@@ -943,45 +955,85 @@ private struct LifecycleStatusSummary: View {
     }
 
     private var helpText: String {
+        let readinessSuffix: String
+        if status.providerReadiness == .ready {
+            readinessSuffix = ""
+        } else {
+            readinessSuffix = "\n\n\(providerReadinessHelpText)"
+        }
+
         switch status.state {
         case .localOnly:
-            return "This model exists only on this Mac. Back Up creates a duplicate on the backup drive."
+            return "This model exists only on this Mac. Back Up creates a duplicate on the backup drive." + readinessSuffix
         case .backedUp:
-            return "A verified backup exists, and the model is still available locally."
+            return "A verified backup exists, and the model is still available locally." + readinessSuffix
         case .backupUnavailable:
-            return "Backup and archive actions require a reachable writable backup drive."
+            return "Backup and archive actions require a reachable writable backup drive." + readinessSuffix
         case .backingUp:
-            return "ModeruBakappu is copying and verifying the backup. The local model remains in place."
+            return "ModeruBakappu is copying and verifying the backup. The local model remains in place." + readinessSuffix
         case let .backupFailed(message):
-            return "Backup failed: \(message)"
+            return "Backup failed: \(message)" + readinessSuffix
         case .archiving:
-            return "ModeruBakappu is ensuring a verified backup exists, then it will remove the local model."
+            return "ModeruBakappu is ensuring a verified backup exists, then it will remove the local model." + readinessSuffix
         case let .archiveFailed(message):
-            return "Archive failed: \(message)"
+            return "Archive failed: \(message)" + readinessSuffix
         case .archived:
-            return "The local model was removed after backup verification."
+            return "The local model was removed after backup verification." + readinessSuffix
         case .restoring:
-            return "ModeruBakappu is copying the archived model back to this Mac and verifying it."
+            return "ModeruBakappu is copying the archived model back to this Mac and verifying it." + readinessSuffix
         case let .restoreFailed(message):
-            return "Restore failed: \(message)"
+            return "Restore failed: \(message)" + readinessSuffix
         case .deletingLocal:
-            return "ModeruBakappu is removing the local model folder. The verified backup remains available."
+            return "ModeruBakappu is removing the local model folder. The verified backup remains available." + readinessSuffix
         case let .deleteLocalFailed(message):
-            return "Delete local model failed: \(message)"
+            return "Delete local model failed: \(message)" + readinessSuffix
         case .deletingBackup:
-            return "ModeruBakappu is removing the backup payload from the selected backup drive."
+            return "ModeruBakappu is removing the backup payload from the selected backup drive." + readinessSuffix
         case let .deleteBackupFailed(message):
-            return "Delete backup failed: \(message)"
+            return "Delete backup failed: \(message)" + readinessSuffix
         case .restorable:
-            return "This model is archived: the local model was removed, and Restore copies it back from the backup drive."
+            return "This model is archived: the local model was removed, and Restore copies it back from the backup drive." + readinessSuffix
         case .missingBackupDrive:
-            return "This model is archived, but the backup drive is not currently available."
+            return "This model is archived, but the backup drive is not currently available." + readinessSuffix
         case let .restoreConflict(message):
-            return "Restore conflict: \(message)"
+            return "Restore conflict: \(message)" + readinessSuffix
         case let .providerNotReady(message):
+            return "Provider is not ready: \(message)" + readinessSuffix
+        case let .unknown(message):
+            return message + readinessSuffix
+        }
+    }
+
+    private var providerReadinessHelpText: String {
+        switch status.providerReadiness {
+        case .ready:
+            return "Provider readiness is confirmed."
+        case let .notReady(message):
             return "Provider is not ready: \(message)"
         case let .unknown(message):
-            return message
+            return "Provider readiness is unknown: \(message)"
+        }
+    }
+
+    private var providerReadinessIcon: String {
+        switch status.providerReadiness {
+        case .ready:
+            return "checkmark.circle"
+        case .notReady:
+            return "exclamationmark.triangle"
+        case .unknown:
+            return "questionmark.circle"
+        }
+    }
+
+    private var providerReadinessColor: Color {
+        switch status.providerReadiness {
+        case .ready:
+            return .green
+        case .notReady:
+            return .red
+        case .unknown:
+            return .orange
         }
     }
 
