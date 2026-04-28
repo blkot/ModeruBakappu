@@ -817,7 +817,7 @@ final class AppModel: ObservableObject {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let marker = try decoder.decode(BackupRootMarker.self, from: data)
-            try validateBackupRootID(marker.backupRootID)
+            rememberSelectedBackupRootID(marker.backupRootID)
             print("[AppModel] backup marker present: \(markerURL.path) id=\(marker.backupRootID.uuidString)")
             return
         }
@@ -833,26 +833,12 @@ final class AppModel: ObservableObject {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(marker)
         try data.write(to: markerURL, options: .atomic)
-        UserDefaults.standard.set(marker.backupRootID.uuidString, forKey: backupRootIDDefaultsKey)
+        rememberSelectedBackupRootID(marker.backupRootID)
         print("[AppModel] created backup marker: \(markerURL.path) id=\(marker.backupRootID.uuidString)")
     }
 
-    private func validateBackupRootID(_ backupRootID: UUID) throws {
-        let defaults = UserDefaults.standard
-        guard let storedID = defaults.string(forKey: backupRootIDDefaultsKey) else {
-            defaults.set(backupRootID.uuidString, forKey: backupRootIDDefaultsKey)
-            return
-        }
-
-        guard storedID == backupRootID.uuidString else {
-            throw NSError(
-                domain: "ModeruBakappu.BackupRoot",
-                code: 1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "The selected folder belongs to a different ModeruBakappu backup root."
-                ]
-            )
-        }
+    private func rememberSelectedBackupRootID(_ backupRootID: UUID) {
+        UserDefaults.standard.set(backupRootID.uuidString, forKey: backupRootIDDefaultsKey)
     }
 
     private func canWriteProbeFile(in directoryURL: URL) throws -> Bool {
