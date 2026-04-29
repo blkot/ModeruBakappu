@@ -1146,10 +1146,8 @@ private struct ProviderBadge: View {
 
     private var iconSize: CGFloat {
         switch provider {
-        case .lmStudio:
+        case .lmStudio, .omlx:
             return 34
-        case .omlx:
-            return 23
         case .ollama, .custom:
             return 21
         }
@@ -1157,9 +1155,9 @@ private struct ProviderBadge: View {
 
     private var iconCornerRadius: CGFloat {
         switch provider {
-        case .lmStudio:
+        case .lmStudio, .omlx:
             return 8
-        case .omlx, .ollama, .custom:
+        case .ollama, .custom:
             return 0
         }
     }
@@ -1192,10 +1190,8 @@ private struct ProviderBadge: View {
 
     private var color: Color {
         switch provider {
-        case .lmStudio:
+        case .lmStudio, .omlx:
             return .clear
-        case .omlx:
-            return .white
         case .ollama:
             return .gray
         case .custom:
