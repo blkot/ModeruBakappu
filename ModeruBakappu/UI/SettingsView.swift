@@ -15,19 +15,22 @@ struct SettingsView: View {
             Section("Source Access") {
                 ForEach(appModel.sourceConfigurations) { configuration in
                     LabeledContent("\(configuration.provider.displayName) Folder") {
-                        Text(configuration.folderURL?.path ?? "Not configured")
+                        Text(configuration.provider.disabledReason ?? configuration.folderURL?.path ?? "Not configured")
                             .foregroundStyle(configuration.folderURL == nil ? .secondary : .primary)
                     }
 
                     LabeledContent("\(configuration.provider.displayName) Status") {
-                        Text(configuration.accessState.title)
+                        Text(configuration.provider.isEnabled ? configuration.accessState.title : "Planned")
+                            .foregroundStyle(configuration.provider.isEnabled ? .primary : .secondary)
                     }
 
                     HStack {
                         Button("Choose \(configuration.provider.displayName) Folder") {
                             appModel.selectSourceFolder(for: configuration.provider)
                         }
+                        .disabled(!configuration.provider.isEnabled)
                     }
+                    .help(configuration.provider.disabledReason ?? configuration.accessState.summary)
                 }
             }
 

@@ -10,12 +10,14 @@ import Foundation
 enum BookmarkKey: String, CaseIterable {
     case lmStudioModels
     case omlxModels
+    case ollamaModels
     case backupRoot
 }
 
 enum ModelProvider: String, Equatable, Codable {
     case lmStudio = "lm_studio"
     case omlx = "omlx"
+    case ollama = "ollama"
     case custom = "custom"
 
     var displayName: String {
@@ -24,6 +26,8 @@ enum ModelProvider: String, Equatable, Codable {
             return "LM Studio"
         case .omlx:
             return "oMLX"
+        case .ollama:
+            return "Ollama"
         case .custom:
             return "Custom Source"
         }
@@ -35,6 +39,8 @@ enum ModelProvider: String, Equatable, Codable {
             return "lm-studio"
         case .omlx:
             return "omlx"
+        case .ollama:
+            return "ollama"
         case .custom:
             return "custom"
         }
@@ -46,7 +52,27 @@ enum ModelProvider: String, Equatable, Codable {
             return .lmStudioModels
         case .omlx:
             return .omlxModels
+        case .ollama:
+            return .ollamaModels
         case .custom:
+            return nil
+        }
+    }
+
+    var isEnabled: Bool {
+        switch self {
+        case .lmStudio, .omlx, .custom:
+            return true
+        case .ollama:
+            return false
+        }
+    }
+
+    var disabledReason: String? {
+        switch self {
+        case .ollama:
+            return "Ollama support is pending until its manifest and blob layout are specified with tests."
+        case .lmStudio, .omlx, .custom:
             return nil
         }
     }

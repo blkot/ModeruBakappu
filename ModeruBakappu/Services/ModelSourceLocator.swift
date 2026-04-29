@@ -8,17 +8,16 @@
 import Foundation
 
 final class ModelSourceLocator {
-    private let fileManager: FileManager
+    private let adapters: [any ModelProviderAdapter]
 
-    init(fileManager: FileManager = .default) {
-        self.fileManager = fileManager
+    init(adapters: [any ModelProviderAdapter] = DirectoryModelProviderAdapter.defaultAdapters()) {
+        self.adapters = adapters
     }
 
     func detectSources() -> [DetectedSourceConfiguration] {
-        let detected = [
-            detectLMStudio(),
-            detectOMLX()
-        ].compactMap { $0 }
+        let detected = adapters.compactMap { adapter in
+            adapter.detectSource()
+        }
 
         for result in detected {
             print("[ModelSourceLocator] detected provider=\(result.provider.displayName) path=\(result.folderURL.path)")
@@ -28,62 +27,26 @@ final class ModelSourceLocator {
     }
 
     func inferProvider(for url: URL) -> ModelProvider {
-        let path = url.path
-        if path.contains("/.omlx/") || path.hasSuffix("/.omlx/models") {
-            return .omlx
+        adapters.first { $0.ownsSourceURL(url) }?.provider ?? .custom
+    }
+
+    func discoverModels(in rootURL: URL, source: ModelProvider) throws -> [DiscoveredModel] {
+        guard let adapter = adapter(for: source) else {
+            throw LMStudioDiscoveryError.inaccessibleRoot
         }
-        if path.contains("/LM Studio/") || path.contains("/.cache/lm-studio/") || path.contains("/.lmstudio/") {
-            return .lmStudio
-        }
-        return .custom
+        return try adapter.discoverModels(in: rootURL)
     }
 
-    private func detectLMStudio() -> DetectedSourceConfiguration? {
-        let homeDirectory = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-        let candidates = [
-            homeDirectory.appendingPathComponent(".cache/lm-studio/models", isDirectory: true),
-            homeDirectory.appendingPathComponent(".lmstudio/models", isDirectory: true),
-            homeDirectory.appendingPathComponent("Library/Application Support/LM Studio/Models", isDirectory: true)
-        ]
-
-        print("[ModelSourceLocator] checking LM Studio candidates:")
-        return firstValidCandidate(in: candidates, provider: .lmStudio)
-    }
-
-    private func detectOMLX() -> DetectedSourceConfiguration? {
-        let homeDirectory = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-        let fallback = homeDirectory.appendingPathComponent(".omlx/models", isDirectory: true)
-        print("[ModelSourceLocator] checking oMLX models root:")
-        return firstValidCandidate(in: [fallback], provider: .omlx)
-    }
-
-    private func firstValidCandidate(in candidates: [URL], provider: ModelProvider) -> DetectedSourceConfiguration? {
-        for candidate in candidates {
-            let valid = isLikelyModelsRoot(candidate)
-            print("[ModelSourceLocator] candidate=\(candidate.path) valid=\(valid)")
-            if valid {
-                return DetectedSourceConfiguration(provider: provider, folderURL: candidate)
-            }
-        }
-        return nil
-    }
-
-    private func isLikelyModelsRoot(_ url: URL) -> Bool {
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
-              isDirectory.boolValue
+    func readiness(for model: DiscoveredModel) -> ProviderReadinessState {
+        guard let provider = ModelProvider(rawValue: model.source),
+              let adapter = adapter(for: provider)
         else {
-            return false
+            return .unknown("No provider adapter is available for this model.")
         }
+        return adapter.readiness(for: model)
+    }
 
-        guard let children = try? fileManager.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return false
-        }
-
-        return !children.isEmpty
+    private func adapter(for provider: ModelProvider) -> (any ModelProviderAdapter)? {
+        adapters.first { $0.provider == provider }
     }
 }

@@ -15,6 +15,7 @@ struct FolderStatusCard: View {
     let accentColor: Color
     let primaryActionTitle: String
     let onPrimaryAction: () -> Void
+    var primaryActionDisabled = false
     let secondaryActionTitle: String?
     let onSecondaryAction: (() -> Void)?
 
@@ -43,6 +44,7 @@ struct FolderStatusCard: View {
 
             HStack {
                 Button(primaryActionTitle, action: onPrimaryAction)
+                    .disabled(primaryActionDisabled)
 
                 if let secondaryActionTitle, let onSecondaryAction {
                     Button(secondaryActionTitle, action: onSecondaryAction)

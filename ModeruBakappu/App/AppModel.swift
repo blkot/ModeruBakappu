@@ -24,7 +24,6 @@ final class AppModel: ObservableObject {
     private let backupIndexStore: BackupIndexStore
     private let folderPicker: FolderPicker
     private let modelSourceLocator: ModelSourceLocator
-    private let modelDiscoveryService: LMStudioDiscoveryService
     private let backupCoordinator: BackupCoordinator
     private let fileManager: FileManager
 
@@ -42,7 +41,7 @@ final class AppModel: ObservableObject {
     private var lastBackupValidationFailure: String?
     private let backupRootIDDefaultsKey = "ModeruBakappu.backupRootID"
 
-    private static let supportedProviders: [ModelProvider] = [.lmStudio, .omlx]
+    private static let supportedProviders: [ModelProvider] = [.lmStudio, .omlx, .ollama]
 
     convenience init() {
         self.init(
@@ -50,7 +49,6 @@ final class AppModel: ObservableObject {
             backupIndexStore: JSONBackupIndexStore(),
             folderPicker: OpenPanelFolderPicker(),
             modelSourceLocator: ModelSourceLocator(),
-            modelDiscoveryService: LMStudioDiscoveryService(),
             backupCoordinator: BackupCoordinator(),
             fileManager: .default
         )
@@ -61,7 +59,6 @@ final class AppModel: ObservableObject {
         backupIndexStore: BackupIndexStore,
         folderPicker: FolderPicker,
         modelSourceLocator: ModelSourceLocator,
-        modelDiscoveryService: LMStudioDiscoveryService,
         backupCoordinator: BackupCoordinator,
         fileManager: FileManager
     ) {
@@ -69,7 +66,6 @@ final class AppModel: ObservableObject {
         self.backupIndexStore = backupIndexStore
         self.folderPicker = folderPicker
         self.modelSourceLocator = modelSourceLocator
-        self.modelDiscoveryService = modelDiscoveryService
         self.backupCoordinator = backupCoordinator
         self.fileManager = fileManager
         self.sourceConfigurations = Self.supportedProviders.map { provider in
@@ -112,6 +108,8 @@ final class AppModel: ObservableObject {
     }
 
     func selectSourceFolder(for provider: ModelProvider) {
+        guard provider.isEnabled else { return }
+
         let picked = folderPicker.pickFolder(
             title: "Choose \(provider.displayName) Models Folder",
             message: "Choose the folder where \(provider.displayName) stores local models.",
@@ -158,6 +156,12 @@ final class AppModel: ObservableObject {
     func refreshModelDiscovery() {
         for index in sourceConfigurations.indices {
             let configuration = sourceConfigurations[index]
+            guard configuration.provider.isEnabled else {
+                sourceConfigurations[index].models = []
+                sourceConfigurations[index].discoveryState = .unavailable
+                continue
+            }
+
             guard configuration.accessState == .ready, let folderURL = configuration.folderURL else {
                 sourceConfigurations[index].models = []
                 sourceConfigurations[index].discoveryState = .unavailable
@@ -168,7 +172,7 @@ final class AppModel: ObservableObject {
 
             let result: Result<[DiscoveredModel], Error> = withScopedAccess(to: folderURL) {
                 Result {
-                    try modelDiscoveryService.discoverModels(in: folderURL, source: configuration.provider)
+                    try modelSourceLocator.discoverModels(in: folderURL, source: configuration.provider)
                 }
             }
 
@@ -306,7 +310,7 @@ final class AppModel: ObservableObject {
 
         return ModelLifecycleStatus(
             state: lifecycleState,
-            providerReadiness: .ready,
+            providerReadiness: modelSourceLocator.readiness(for: model),
             backupState: backupState
         )
     }
@@ -581,6 +585,8 @@ final class AppModel: ObservableObject {
         }
 
         for detectedSource in detectedSources {
+            guard detectedSource.provider.isEnabled else { continue }
+
             guard configuration(for: detectedSource.provider)?.folderURL == nil else {
                 print("[AppModel] source auto-detect skipped provider=\(detectedSource.provider.displayName) because it is already configured")
                 continue
@@ -592,6 +598,7 @@ final class AppModel: ObservableObject {
     }
 
     private func saveSourceSelection(_ url: URL, for provider: ModelProvider, refreshAfterSave: Bool = true) {
+        guard provider.isEnabled else { return }
         guard let key = provider.bookmarkKey else { return }
 
         do {
@@ -729,6 +736,11 @@ final class AppModel: ObservableObject {
     }
 
     private func evaluateSourceFolder(url: URL?, isStale: Bool, provider: ModelProvider) -> SourceAccessState {
+        guard provider.isEnabled else {
+            print("[AppModel] source disabled provider=\(provider.displayName)")
+            return .notConfigured
+        }
+
         guard let url else {
             print("[AppModel] source not configured provider=\(provider.displayName)")
             return .notConfigured
@@ -817,7 +829,7 @@ final class AppModel: ObservableObject {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let marker = try decoder.decode(BackupRootMarker.self, from: data)
-            try validateBackupRootID(marker.backupRootID)
+            rememberSelectedBackupRootID(marker.backupRootID)
             print("[AppModel] backup marker present: \(markerURL.path) id=\(marker.backupRootID.uuidString)")
             return
         }
@@ -833,26 +845,12 @@ final class AppModel: ObservableObject {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(marker)
         try data.write(to: markerURL, options: .atomic)
-        UserDefaults.standard.set(marker.backupRootID.uuidString, forKey: backupRootIDDefaultsKey)
+        rememberSelectedBackupRootID(marker.backupRootID)
         print("[AppModel] created backup marker: \(markerURL.path) id=\(marker.backupRootID.uuidString)")
     }
 
-    private func validateBackupRootID(_ backupRootID: UUID) throws {
-        let defaults = UserDefaults.standard
-        guard let storedID = defaults.string(forKey: backupRootIDDefaultsKey) else {
-            defaults.set(backupRootID.uuidString, forKey: backupRootIDDefaultsKey)
-            return
-        }
-
-        guard storedID == backupRootID.uuidString else {
-            throw NSError(
-                domain: "ModeruBakappu.BackupRoot",
-                code: 1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "The selected folder belongs to a different ModeruBakappu backup root."
-                ]
-            )
-        }
+    private func rememberSelectedBackupRootID(_ backupRootID: UUID) {
+        UserDefaults.standard.set(backupRootID.uuidString, forKey: backupRootIDDefaultsKey)
     }
 
     private func canWriteProbeFile(in directoryURL: URL) throws -> Bool {

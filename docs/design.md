@@ -102,9 +102,10 @@ Suggested screens:
 ### Model Discovery
 
 1. Only scan provider sources that are in a ready state.
-2. Keep each provider's folder, status, and models independent.
-3. Persist the last known index locally.
-4. Show stale-but-known data if a source becomes temporarily unavailable.
+2. Route provider detection, model discovery, and readiness through provider adapters.
+3. Keep each provider's folder, status, and models independent.
+4. Persist the last known index locally.
+5. Show stale-but-known data if a source becomes temporarily unavailable.
 
 ### Backup
 
@@ -152,6 +153,7 @@ oMLX should be treated as a separate provider source from LM Studio. The app sho
 ### Ollama
 
 Ollama should be implemented only after its current on-disk model representation is fully specified in code and tests.
+Until then, Ollama may be shown as a disabled planned source in the sidebar, with folder selection and model actions unavailable.
 
 ## Data Model
 

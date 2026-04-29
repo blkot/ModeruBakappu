@@ -67,6 +67,7 @@ The app should be organized around four layers:
 
 3. **Services**
    - source discovery
+   - provider adapters for detection, discovery, and readiness rules
    - path/settings persistence
    - volume monitoring
    - backup coordination
@@ -139,6 +140,7 @@ oMLX should be treated as its own provider.
 Ollama support should only be added after its current on-disk representation is specified with tests and fixtures.
 
 - Do not guess manifest layout.
+- It may appear in the UI as a disabled planned provider.
 - Do not treat the entire Ollama models store as one model.
 - Do not implement per-model backup until backup granularity is clearly safe.
 
