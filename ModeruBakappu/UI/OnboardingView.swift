@@ -26,13 +26,16 @@ struct OnboardingView: View {
                         title: "\(configuration.provider.displayName) Models Folder",
                         path: configuration.folderURL?.path,
                         stateTitle: configuration.accessState.title,
-                        summary: configuration.accessState.summary,
+                        summary: configuration.provider.disabledReason ?? configuration.accessState.summary,
                         accentColor: color(for: configuration.accessState),
                         primaryActionTitle: configuration.folderURL == nil ? "Choose Folder" : "Change Folder",
                         onPrimaryAction: { appModel.selectSourceFolder(for: configuration.provider) },
+                        primaryActionDisabled: !configuration.provider.isEnabled,
                         secondaryActionTitle: nil,
                         onSecondaryAction: nil as (() -> Void)?
                     )
+                    .opacity(configuration.provider.isEnabled ? 1 : 0.52)
+                    .help(configuration.provider.disabledReason ?? configuration.accessState.summary)
                 }
 
                 FolderStatusCard(

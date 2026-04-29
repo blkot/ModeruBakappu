@@ -153,6 +153,7 @@ oMLX should be treated as a separate provider source from LM Studio. The app sho
 ### Ollama
 
 Ollama should be implemented only after its current on-disk model representation is fully specified in code and tests.
+Until then, Ollama may be shown as a disabled planned source in the sidebar, with folder selection and model actions unavailable.
 
 ## Data Model
 

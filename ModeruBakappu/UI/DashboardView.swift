@@ -157,8 +157,12 @@ struct DashboardView: View {
                         configuration: configuration,
                         isSelected: selectedProvider == configuration.provider,
                         accessColor: color(for: configuration.accessState),
-                        onSelect: { selectedProvider = configuration.provider },
+                        onSelect: {
+                            guard configuration.provider.isEnabled else { return }
+                            selectedProvider = configuration.provider
+                        },
                         onChooseFolder: {
+                            guard configuration.provider.isEnabled else { return }
                             selectedProvider = configuration.provider
                             appModel.selectSourceFolder(for: configuration.provider)
                         }
@@ -631,8 +635,8 @@ private struct ProviderSidebarRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(configuration.provider.displayName)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(configuration.discoveryState.title)
+                        .foregroundStyle(configuration.provider.isEnabled ? .primary : .secondary)
+                    Text(statusTitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -651,9 +655,10 @@ private struct ProviderSidebarRow: View {
                 Button("Folder", action: onChooseFolder)
                     .font(.caption)
                     .buttonStyle(.link)
+                    .disabled(!configuration.provider.isEnabled)
             }
 
-            Text(configuration.folderURL?.lastPathComponent ?? "No folder selected")
+            Text(folderSummary)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -671,6 +676,19 @@ private struct ProviderSidebarRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
+        .opacity(configuration.provider.isEnabled ? 1 : 0.48)
+        .help(configuration.provider.disabledReason ?? configuration.accessState.summary)
+    }
+
+    private var statusTitle: String {
+        configuration.provider.disabledReason ?? configuration.discoveryState.title
+    }
+
+    private var folderSummary: String {
+        if let disabledReason = configuration.provider.disabledReason {
+            return disabledReason
+        }
+        return configuration.folderURL?.lastPathComponent ?? "No folder selected"
     }
 }
 
@@ -705,8 +723,9 @@ private struct ProviderDetailHeader: View {
                 Spacer()
 
                 Button("Choose Folder", action: onChooseFolder)
+                    .disabled(!configuration.provider.isEnabled)
                 Button("Refresh Scan", action: onRefresh)
-                    .disabled(configuration.discoveryState == .scanning || configuration.discoveryState == .unavailable)
+                    .disabled(!configuration.provider.isEnabled || configuration.discoveryState == .scanning || configuration.discoveryState == .unavailable)
             }
 
             HStack(spacing: 12) {
@@ -1128,7 +1147,11 @@ private struct ProviderBadge: View {
         switch provider {
         case .lmStudio:
             return "ProviderLMStudio"
-        case .omlx, .custom:
+        case .omlx:
+            return "ProviderOMLX"
+        case .ollama:
+            return "ProviderOllama"
+        case .custom:
             return nil
         }
     }
@@ -1139,6 +1162,8 @@ private struct ProviderBadge: View {
             return "LM"
         case .omlx:
             return "OX"
+        case .ollama:
+            return "OL"
         case .custom:
             return "CS"
         }
@@ -1150,6 +1175,8 @@ private struct ProviderBadge: View {
             return .blue
         case .omlx:
             return .purple
+        case .ollama:
+            return .gray
         case .custom:
             return .gray
         }

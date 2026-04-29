@@ -116,6 +116,8 @@ Exit criteria:
 
 Deliverable: verified Ollama indexing strategy.
 
+Current UI status: Ollama is visible as a disabled planned provider so users can see the intended roadmap without accidentally backing up an unsafe store layout.
+
 Tasks:
 
 - specify current Ollama storage representation in code comments and tests

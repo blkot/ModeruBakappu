@@ -41,7 +41,7 @@ final class AppModel: ObservableObject {
     private var lastBackupValidationFailure: String?
     private let backupRootIDDefaultsKey = "ModeruBakappu.backupRootID"
 
-    private static let supportedProviders: [ModelProvider] = [.lmStudio, .omlx]
+    private static let supportedProviders: [ModelProvider] = [.lmStudio, .omlx, .ollama]
 
     convenience init() {
         self.init(
@@ -108,6 +108,8 @@ final class AppModel: ObservableObject {
     }
 
     func selectSourceFolder(for provider: ModelProvider) {
+        guard provider.isEnabled else { return }
+
         let picked = folderPicker.pickFolder(
             title: "Choose \(provider.displayName) Models Folder",
             message: "Choose the folder where \(provider.displayName) stores local models.",
@@ -154,6 +156,12 @@ final class AppModel: ObservableObject {
     func refreshModelDiscovery() {
         for index in sourceConfigurations.indices {
             let configuration = sourceConfigurations[index]
+            guard configuration.provider.isEnabled else {
+                sourceConfigurations[index].models = []
+                sourceConfigurations[index].discoveryState = .unavailable
+                continue
+            }
+
             guard configuration.accessState == .ready, let folderURL = configuration.folderURL else {
                 sourceConfigurations[index].models = []
                 sourceConfigurations[index].discoveryState = .unavailable
@@ -577,6 +585,8 @@ final class AppModel: ObservableObject {
         }
 
         for detectedSource in detectedSources {
+            guard detectedSource.provider.isEnabled else { continue }
+
             guard configuration(for: detectedSource.provider)?.folderURL == nil else {
                 print("[AppModel] source auto-detect skipped provider=\(detectedSource.provider.displayName) because it is already configured")
                 continue
@@ -588,6 +598,7 @@ final class AppModel: ObservableObject {
     }
 
     private func saveSourceSelection(_ url: URL, for provider: ModelProvider, refreshAfterSave: Bool = true) {
+        guard provider.isEnabled else { return }
         guard let key = provider.bookmarkKey else { return }
 
         do {
@@ -725,6 +736,11 @@ final class AppModel: ObservableObject {
     }
 
     private func evaluateSourceFolder(url: URL?, isStale: Bool, provider: ModelProvider) -> SourceAccessState {
+        guard provider.isEnabled else {
+            print("[AppModel] source disabled provider=\(provider.displayName)")
+            return .notConfigured
+        }
+
         guard let url else {
             print("[AppModel] source not configured provider=\(provider.displayName)")
             return .notConfigured
