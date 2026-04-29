@@ -1131,8 +1131,9 @@ private struct ProviderBadge: View {
                 Image(assetName)
                     .renderingMode(.original)
                     .resizable()
-                    .scaledToFit()
-                    .frame(width: 21, height: 21)
+                    .scaledToFill()
+                    .frame(width: iconSize, height: iconSize)
+                    .clipShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
                     .accessibilityLabel(provider.displayName)
             } else {
                 Text(initials)
@@ -1141,6 +1142,24 @@ private struct ProviderBadge: View {
             }
         }
         .frame(width: 34, height: 34)
+    }
+
+    private var iconSize: CGFloat {
+        switch provider {
+        case .lmStudio, .omlx:
+            return 34
+        case .ollama, .custom:
+            return 21
+        }
+    }
+
+    private var iconCornerRadius: CGFloat {
+        switch provider {
+        case .lmStudio, .omlx:
+            return 8
+        case .ollama, .custom:
+            return 0
+        }
     }
 
     private var assetName: String? {
