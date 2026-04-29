@@ -44,44 +44,47 @@ struct DashboardView: View {
         }
         .sheet(item: $pendingActionSheet) { sheet in
             switch sheet {
-            case let .archive(request):
-                ArchiveConfirmationSheet(
-                    provider: request.provider,
-                    model: request.model,
+            case let .backup(request):
+                ModelActionPlanSheet(
+                    preview: planPreview(for: .backup, request: request),
                     onCancel: { pendingActionSheet = nil },
-                    onArchive: {
+                    onConfirm: {
+                        pendingActionSheet = nil
+                        appModel.backup(model: request.model)
+                    }
+                )
+            case let .archive(request):
+                ModelActionPlanSheet(
+                    preview: planPreview(for: .archive, request: request),
+                    onCancel: { pendingActionSheet = nil },
+                    onConfirm: {
                         pendingActionSheet = nil
                         appModel.archive(model: request.model)
                     }
                 )
             case let .restore(request):
-                RestoreConfirmationSheet(
-                    provider: request.provider,
-                    model: request.model,
+                ModelActionPlanSheet(
+                    preview: planPreview(for: .restore, request: request),
                     onCancel: { pendingActionSheet = nil },
-                    onRestore: {
+                    onConfirm: {
                         pendingActionSheet = nil
                         appModel.restore(model: request.model)
                     }
                 )
             case let .deleteLocal(request):
-                DeleteLocalConfirmationSheet(
-                    provider: request.provider,
-                    model: request.model,
+                ModelActionPlanSheet(
+                    preview: planPreview(for: .deleteLocal, request: request),
                     onCancel: { pendingActionSheet = nil },
-                    onDelete: {
+                    onConfirm: {
                         pendingActionSheet = nil
                         appModel.deleteLocalCopy(model: request.model)
                     }
                 )
             case let .deleteBackup(request):
-                DeleteBackupConfirmationSheet(
-                    provider: request.provider,
-                    model: request.model,
-                    backupRelativePath: request.backupRelativePath ?? request.model.relativePath,
-                    requiresTypedConfirmation: request.requiresTypedConfirmation,
+                ModelActionPlanSheet(
+                    preview: planPreview(for: .deleteBackup, request: request),
                     onCancel: { pendingActionSheet = nil },
-                    onDelete: {
+                    onConfirm: {
                         pendingActionSheet = nil
                         appModel.deleteBackup(model: request.model)
                     }
@@ -194,7 +197,7 @@ struct DashboardView: View {
                     configuration: configuration,
                     models: appModel.displayModels(for: configuration),
                     lifecycleStatus: { appModel.lifecycleStatus(for: $0) },
-                    onBackup: { appModel.backup(model: $0) },
+                    onBackup: { pendingActionSheet = .backup(ModelActionRequest(provider: configuration.provider, model: $0)) },
                     onArchive: { pendingActionSheet = .archive(ModelActionRequest(provider: configuration.provider, model: $0)) },
                     onRestore: { pendingActionSheet = .restore(ModelActionRequest(provider: configuration.provider, model: $0)) },
                     onDeleteLocal: { pendingActionSheet = .deleteLocal(ModelActionRequest(provider: configuration.provider, model: $0)) },
@@ -241,6 +244,112 @@ struct DashboardView: View {
             return .secondary
         }
     }
+
+    private func planPreview(for kind: ModelActionKind, request: ModelActionRequest) -> ModelActionPlanPreview {
+        let model = request.model
+        let backupRootPath = appModel.backupFolderURL?.path
+        let backupRelativePath = request.backupRelativePath
+            ?? appModel.backupRecords[model.id]?.backupRelativePath
+            ?? "\(request.provider.backupDirectoryName)/\(model.relativePath)"
+        let backupPath = backupRootPath.map { "\($0)/\(backupRelativePath)" } ?? backupRelativePath
+        let existingRecord = appModel.backupRecords[model.id]
+        let sizeDescription = existingRecord.map {
+            ByteCountFormatter.string(fromByteCount: $0.sizeBytes, countStyle: .file)
+        } ?? model.sizeDescription
+        let fileCountDescription = existingRecord.map {
+            $0.fileCount == 1 ? "1 file" : "\($0.fileCount) files"
+        } ?? model.fileCountDescription
+
+        switch kind {
+        case .backup:
+            return ModelActionPlanPreview(
+                kind: kind,
+                provider: request.provider,
+                model: model,
+                sourcePath: model.folderURL.path,
+                destinationPath: backupPath,
+                sizeDescription: sizeDescription,
+                fileCountDescription: fileCountDescription,
+                note: "The provider-usable model stays on this Mac.",
+                steps: [
+                    "Copy the model folder to the backup drive.",
+                    "Verify copied file count and size.",
+                    "Save the backup record.",
+                    "Keep the local runtime model in place."
+                ]
+            )
+        case .archive:
+            let firstStep = existingRecord == nil
+                ? "Copy the model folder to the backup drive."
+                : "Verify the existing backup payload on the backup drive."
+            return ModelActionPlanPreview(
+                kind: kind,
+                provider: request.provider,
+                model: model,
+                sourcePath: model.folderURL.path,
+                destinationPath: backupPath,
+                sizeDescription: sizeDescription,
+                fileCountDescription: fileCountDescription,
+                note: "The local runtime model will be removed only after backup verification.",
+                steps: [
+                    firstStep,
+                    "Verify file count and size.",
+                    "Save the backup record.",
+                    "Remove the local runtime model from this Mac."
+                ]
+            )
+        case .restore:
+            return ModelActionPlanPreview(
+                kind: kind,
+                provider: request.provider,
+                model: model,
+                sourcePath: backupPath,
+                destinationPath: model.folderURL.path,
+                sizeDescription: sizeDescription,
+                fileCountDescription: fileCountDescription,
+                note: "The archived backup remains on the backup drive.",
+                steps: [
+                    "Verify the backup payload on the backup drive.",
+                    "Copy the model back into the provider model folder.",
+                    "Verify restored file count and size.",
+                    "Mark the model as available locally."
+                ]
+            )
+        case .deleteLocal:
+            return ModelActionPlanPreview(
+                kind: kind,
+                provider: request.provider,
+                model: model,
+                sourcePath: model.folderURL.path,
+                destinationPath: backupPath,
+                sizeDescription: sizeDescription,
+                fileCountDescription: fileCountDescription,
+                note: "The verified backup remains available on the backup drive.",
+                steps: [
+                    "Verify the backup payload on the backup drive.",
+                    "Remove the local runtime model folder from this Mac.",
+                    "Update the backup record as archived."
+                ]
+            )
+        case .deleteBackup:
+            return ModelActionPlanPreview(
+                kind: kind,
+                provider: request.provider,
+                model: model,
+                sourcePath: backupPath,
+                destinationPath: "Removed from backup drive",
+                sizeDescription: sizeDescription,
+                fileCountDescription: fileCountDescription,
+                note: request.requiresTypedConfirmation ? "This may remove the only known copy." : "The local runtime model remains on this Mac.",
+                steps: [
+                    "Verify the backup payload on the backup drive.",
+                    "Remove the backup payload from the selected backup root.",
+                    "Remove the backup record from the local index."
+                ],
+                requiresTypedConfirmation: request.requiresTypedConfirmation
+            )
+        }
+    }
 }
 
 private struct ModelActionRequest: Identifiable {
@@ -254,7 +363,107 @@ private struct ModelActionRequest: Identifiable {
     }
 }
 
+private enum ModelActionKind {
+    case backup
+    case archive
+    case restore
+    case deleteLocal
+    case deleteBackup
+
+    var title: String {
+        switch self {
+        case .backup:
+            return "Back Up Model?"
+        case .archive:
+            return "Archive Model?"
+        case .restore:
+            return "Restore Model?"
+        case .deleteLocal:
+            return "Delete Local Model?"
+        case .deleteBackup:
+            return "Delete Backup?"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .backup:
+            return "Create a verified duplicate on the backup drive."
+        case .archive:
+            return "Free space on this Mac after backup verification."
+        case .restore:
+            return "Copy the archived model back to this Mac."
+        case .deleteLocal:
+            return "Remove provider-usable files from this Mac."
+        case .deleteBackup:
+            return "Remove the backup payload from the backup drive."
+        }
+    }
+
+    var confirmTitle: String {
+        switch self {
+        case .backup:
+            return "Back Up"
+        case .archive:
+            return "Archive"
+        case .restore:
+            return "Restore"
+        case .deleteLocal:
+            return "Delete Local Model"
+        case .deleteBackup:
+            return "Delete Backup"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .backup:
+            return "externaldrive.badge.plus"
+        case .archive:
+            return "archivebox"
+        case .restore:
+            return "arrow.down.doc"
+        case .deleteLocal:
+            return "trash"
+        case .deleteBackup:
+            return "externaldrive.badge.minus"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .backup, .restore:
+            return .blue
+        case .archive, .deleteLocal, .deleteBackup:
+            return .red
+        }
+    }
+
+    var isDestructive: Bool {
+        switch self {
+        case .archive, .deleteLocal, .deleteBackup:
+            return true
+        case .backup, .restore:
+            return false
+        }
+    }
+}
+
+private struct ModelActionPlanPreview {
+    let kind: ModelActionKind
+    let provider: ModelProvider
+    let model: DiscoveredModel
+    let sourcePath: String
+    let destinationPath: String
+    let sizeDescription: String
+    let fileCountDescription: String
+    let note: String
+    let steps: [String]
+    var requiresTypedConfirmation = false
+}
+
 private enum ModelActionSheet: Identifiable {
+    case backup(ModelActionRequest)
     case archive(ModelActionRequest)
     case restore(ModelActionRequest)
     case deleteLocal(ModelActionRequest)
@@ -262,6 +471,8 @@ private enum ModelActionSheet: Identifiable {
 
     var id: String {
         switch self {
+        case let .backup(request):
+            return "backup:\(request.id)"
         case let .archive(request):
             return "archive:\(request.id)"
         case let .restore(request):
@@ -274,178 +485,70 @@ private enum ModelActionSheet: Identifiable {
     }
 }
 
-private struct ArchiveConfirmationSheet: View {
-    let provider: ModelProvider
-    let model: DiscoveredModel
+private struct ModelActionPlanSheet: View {
+    let preview: ModelActionPlanPreview
     let onCancel: () -> Void
-    let onArchive: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                Image(systemName: "archivebox")
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background(Color.red.opacity(0.9), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Archive Model?")
-                        .font(.title3.weight(.semibold))
-                    Text("This will free space on this Mac after backup verification.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            ModelActionInfoFrame(provider: provider, model: model)
-
-            Text("ModeruBakappu will copy and verify this model on the backup drive, then remove the local model folder from this Mac. Use Back Up when you want a duplicate; use Archive when you want to free space on this Mac.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Button("Archive", role: .destructive, action: onArchive)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 520)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-}
-
-private struct RestoreConfirmationSheet: View {
-    let provider: ModelProvider
-    let model: DiscoveredModel
-    let onCancel: () -> Void
-    let onRestore: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                Image(systemName: "arrow.down.doc")
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background(Color.blue.opacity(0.9), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Restore Model?")
-                        .font(.title3.weight(.semibold))
-                    Text("This will copy the archived model back to this Mac.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            ModelActionInfoFrame(provider: provider, model: model)
-
-            Text("ModeruBakappu will copy and verify this model from the backup drive back into the provider's model folder. The archived backup remains on the backup drive.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Button("Restore", action: onRestore)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 520)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-}
-
-private struct DeleteLocalConfirmationSheet: View {
-    let provider: ModelProvider
-    let model: DiscoveredModel
-    let onCancel: () -> Void
-    let onDelete: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                DestructiveActionIcon(systemName: "trash")
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Delete Local Model?")
-                        .font(.title3.weight(.semibold))
-                    Text("The verified backup remains available on the backup drive.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            ModelActionInfoFrame(provider: provider, model: model)
-
-            Text("This removes the model files used by the provider runtime on this Mac. The verified backup remains on the backup drive and can be restored later.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Button("Delete Local Model", role: .destructive, action: onDelete)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 520)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-}
-
-private struct DeleteBackupConfirmationSheet: View {
-    let provider: ModelProvider
-    let model: DiscoveredModel
-    let backupRelativePath: String
-    let requiresTypedConfirmation: Bool
-    let onCancel: () -> Void
-    let onDelete: () -> Void
+    let onConfirm: () -> Void
 
     @State private var confirmationText = ""
 
-    private var canDelete: Bool {
-        !requiresTypedConfirmation || confirmationText == "DELETE"
+    private var canConfirm: Bool {
+        !preview.requiresTypedConfirmation || confirmationText == "DELETE"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                DestructiveActionIcon(systemName: "externaldrive.badge.minus")
+                Image(systemName: preview.kind.systemImage)
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(preview.kind.tint.opacity(0.9), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Delete Backup?")
+                    Text(preview.kind.title)
                         .font(.title3.weight(.semibold))
-                    Text(requiresTypedConfirmation ? "This may remove the only known copy." : "The local model remains on this Mac.")
+                    Text(preview.kind.subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            ModelActionInfoFrame(
-                provider: provider,
-                model: model,
-                pathTitle: "Backup Path",
-                pathValue: backupRelativePath
-            )
+            ModelActionInfoFrame(provider: preview.provider, model: preview.model)
 
-            Text("This removes the backup copy from the selected backup drive. This cannot be restored unless another copy exists.")
+            PlanPathGrid(preview: preview)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Plan")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(Array(preview.steps.enumerated()), id: \.offset) { index, step in
+                        HStack(alignment: .firstTextBaseline, spacing: 9) {
+                            Text("\(index + 1)")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 18, height: 18)
+                                .background(preview.kind.tint.opacity(0.85), in: Circle())
+                            Text(step)
+                                .font(.callout)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
+            Text(preview.note)
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(preview.kind.isDestructive ? .red : .secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if requiresTypedConfirmation {
+            if preview.requiresTypedConfirmation {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Type DELETE to confirm.")
                         .font(.caption.weight(.semibold))
@@ -459,27 +562,54 @@ private struct DeleteBackupConfirmationSheet: View {
                 Spacer()
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Delete Backup", role: .destructive, action: onDelete)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canDelete)
+                if preview.kind.isDestructive {
+                    Button(preview.kind.confirmTitle, role: .destructive, action: onConfirm)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!canConfirm)
+                } else {
+                    Button(preview.kind.confirmTitle, action: onConfirm)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!canConfirm)
+                }
             }
         }
         .padding(24)
-        .frame(width: 520)
+        .frame(width: 640)
         .background(Color(nsColor: .windowBackgroundColor))
     }
-
 }
 
-private struct DestructiveActionIcon: View {
-    let systemName: String
+private struct PlanPathGrid: View {
+    let preview: ModelActionPlanPreview
 
     var body: some View {
-        Image(systemName: systemName)
-            .font(.title2)
-            .foregroundStyle(.white)
-            .frame(width: 42, height: 42)
-            .background(Color.red.opacity(0.9), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 9) {
+            PlanRow(title: "Source", value: preview.sourcePath)
+            PlanRow(title: "Destination", value: preview.destinationPath)
+            PlanRow(title: "Size", value: preview.sizeDescription)
+            PlanRow(title: "Files", value: preview.fileCountDescription)
+        }
+        .font(.callout)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct PlanRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        GridRow {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.caption, design: .monospaced))
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
     }
 }
 
