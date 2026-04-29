@@ -629,12 +629,12 @@ private struct ProviderSidebarRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 10) {
-                ProviderBadge(provider: configuration.provider)
+            HStack(spacing: 12) {
+                ProviderBadge(provider: configuration.provider, size: 44)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(configuration.provider.displayName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(configuration.provider.isEnabled ? .primary : .secondary)
                     Text(statusTitle)
                         .font(.caption)
@@ -709,8 +709,8 @@ private struct ProviderDetailHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                HStack(spacing: 12) {
-                    ProviderBadge(provider: configuration.provider)
+                HStack(spacing: 16) {
+                    ProviderBadge(provider: configuration.provider, size: 56)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(configuration.provider.displayName)
                             .font(.title2.weight(.semibold))
@@ -1121,10 +1121,11 @@ private struct PathSummary: View {
 
 private struct ProviderBadge: View {
     let provider: ModelProvider
+    var size: CGFloat = 34
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(color)
 
             if let assetName {
@@ -1137,26 +1138,30 @@ private struct ProviderBadge: View {
                     .accessibilityLabel(provider.displayName)
             } else {
                 Text(initials)
-                    .font(.caption.weight(.bold))
+                    .font(.system(size: size * 0.34, weight: .bold))
                     .foregroundStyle(.white)
             }
         }
-        .frame(width: 34, height: 34)
+        .frame(width: size, height: size)
+    }
+
+    private var cornerRadius: CGFloat {
+        size * 0.24
     }
 
     private var iconSize: CGFloat {
         switch provider {
         case .lmStudio, .omlx:
-            return 34
+            return size
         case .ollama, .custom:
-            return 21
+            return size * 0.62
         }
     }
 
     private var iconCornerRadius: CGFloat {
         switch provider {
         case .lmStudio, .omlx:
-            return 8
+            return cornerRadius
         case .ollama, .custom:
             return 0
         }
