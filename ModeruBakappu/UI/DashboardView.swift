@@ -19,13 +19,6 @@ struct DashboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
-            .background(Color(nsColor: .windowBackgroundColor))
-
-            Divider()
-
             HStack(spacing: 0) {
                 providerSidebar
                     .frame(width: 260)
@@ -90,58 +83,6 @@ struct DashboardView: View {
                     }
                 )
             }
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("ModeruBakappu")
-                    .font(.system(size: 24, weight: .semibold, design: .rounded))
-                Text("\(appModel.configuredSourceCount) sources configured, \(appModel.discoveredModelCount) models discovered")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            topBanners
-                .frame(maxWidth: 680)
-
-            Button {
-                appModel.refreshStatuses()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .help("Refresh")
-        }
-    }
-
-    private var topBanners: some View {
-        HStack(alignment: .center, spacing: 10) {
-            DriveStatusBanner(
-                title: "Backup Drive",
-                iconName: "externaldrive",
-                path: appModel.backupFolderURL?.path,
-                statusTitle: appModel.backupDriveState.title,
-                spaceInfo: appModel.backupDriveSpaceInfo,
-                unavailableSpaceText: appModel.backupDriveState == .notConfigured ? "No backup root" : "Space unavailable",
-                accentColor: color(for: appModel.backupDriveState),
-                onChange: { appModel.selectBackupFolder() },
-                onRevalidate: { appModel.refreshStatuses() }
-            )
-
-            DriveStatusBanner(
-                title: "Mac Drive",
-                iconName: "internaldrive",
-                path: appModel.mainDriveSpaceInfo?.volumePath,
-                statusTitle: appModel.mainDriveSpaceInfo == nil ? "Unavailable" : "Online",
-                spaceInfo: appModel.mainDriveSpaceInfo,
-                unavailableSpaceText: "Space unavailable",
-                accentColor: appModel.mainDriveSpaceInfo == nil ? .secondary : .blue,
-                onChange: nil,
-                onRevalidate: { appModel.refreshStatuses() }
-            )
         }
     }
 
@@ -656,97 +597,6 @@ private struct ModelActionInfoFrame: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(Color.accentColor.opacity(0.24))
             )
-    }
-}
-
-private struct DriveStatusBanner: View {
-    let title: String
-    let iconName: String
-    let path: String?
-    let statusTitle: String
-    let spaceInfo: BackupDriveSpaceInfo?
-    let unavailableSpaceText: String
-    let accentColor: Color
-    let onChange: (() -> Void)?
-    let onRevalidate: () -> Void
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: iconName)
-                .font(.subheadline)
-                .foregroundStyle(accentColor)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                    Text(statusTitle)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(accentColor)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(accentColor.opacity(0.12), in: Capsule())
-                }
-
-                if let spaceInfo {
-                    HStack(spacing: 8) {
-                        ProgressView(value: spaceInfo.usedFraction)
-                            .tint(spaceTint)
-                            .frame(width: 80)
-
-                        Text("\(spaceInfo.availableDescription) free")
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.caption)
-                } else {
-                    Text(unavailableSpaceText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            HStack(spacing: 8) {
-                if let onChange {
-                    Button(action: onChange) {
-                        Image(systemName: "folder")
-                    }
-                    .buttonStyle(.link)
-                    .help("Change backup root")
-                }
-                Button(action: onRevalidate) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.link)
-                .help("Revalidate")
-            }
-            .font(.caption)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08))
-        )
-        .help(path ?? "No folder selected")
-    }
-
-    private var spaceTint: Color {
-        guard let usedFraction = spaceInfo?.usedFraction else { return .secondary }
-        if usedFraction > 0.9 {
-            return .red
-        }
-        if usedFraction > 0.75 {
-            return .orange
-        }
-        return .green
     }
 }
 
