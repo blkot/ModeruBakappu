@@ -27,6 +27,7 @@ enum BookmarkStoreError: LocalizedError {
 final class UserDefaultsBookmarkStore: BookmarkStore {
     private let defaults: UserDefaults
     private let storagePrefix = "ModeruBakappu.bookmark."
+    private let pathStoragePrefix = "ModeruBakappu.path."
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -34,7 +35,7 @@ final class UserDefaultsBookmarkStore: BookmarkStore {
 
     func saveBookmark(for url: URL, as key: BookmarkKey) throws {
         let bookmark = try url.bookmarkData(
-            options: [.withSecurityScope],
+            options: [],
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
@@ -44,17 +45,39 @@ final class UserDefaultsBookmarkStore: BookmarkStore {
         }
 
         defaults.set(bookmark, forKey: storageKey(for: key))
+        defaults.set(url.path, forKey: pathStorageKey(for: key))
     }
 
     func loadBookmark(for key: BookmarkKey) throws -> ResolvedBookmark? {
         guard let data = defaults.data(forKey: storageKey(for: key)) else {
-            return nil
+            return pathFallback(for: key)
         }
 
+        do {
+            return try resolveBookmarkData(data, options: [.withSecurityScope])
+        } catch {
+            do {
+                return try resolveBookmarkData(data, options: [])
+            } catch {
+                if let fallback = pathFallback(for: key) {
+                    print("[BookmarkStore] bookmark resolution failed for \(key.rawValue), falling back to stored path: \(fallback.url.path)")
+                    return fallback
+                }
+                throw error
+            }
+        }
+    }
+
+    func removeBookmark(for key: BookmarkKey) {
+        defaults.removeObject(forKey: storageKey(for: key))
+        defaults.removeObject(forKey: pathStorageKey(for: key))
+    }
+
+    private func resolveBookmarkData(_ data: Data, options: URL.BookmarkResolutionOptions) throws -> ResolvedBookmark {
         var isStale = false
         let url = try URL(
             resolvingBookmarkData: data,
-            options: [.withSecurityScope],
+            options: options,
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
         )
@@ -62,11 +85,19 @@ final class UserDefaultsBookmarkStore: BookmarkStore {
         return ResolvedBookmark(url: url, isStale: isStale)
     }
 
-    func removeBookmark(for key: BookmarkKey) {
-        defaults.removeObject(forKey: storageKey(for: key))
+    private func pathFallback(for key: BookmarkKey) -> ResolvedBookmark? {
+        guard let path = defaults.string(forKey: pathStorageKey(for: key)), !path.isEmpty else {
+            return nil
+        }
+
+        return ResolvedBookmark(url: URL(fileURLWithPath: path, isDirectory: true), isStale: false)
     }
 
     private func storageKey(for key: BookmarkKey) -> String {
         storagePrefix + key.rawValue
+    }
+
+    private func pathStorageKey(for key: BookmarkKey) -> String {
+        pathStoragePrefix + key.rawValue
     }
 }
