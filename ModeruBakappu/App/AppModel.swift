@@ -20,6 +20,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var backupRecords: [String: BackupRecord] = [:]
     @Published var errorMessage: String?
 
+    let catalogViewModel = CatalogViewModel()
+
     private let bookmarkStore: BookmarkStore
     private let backupIndexStore: BackupIndexStore
     private let folderPicker: FolderPicker
