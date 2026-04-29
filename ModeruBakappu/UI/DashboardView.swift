@@ -1110,10 +1110,9 @@ private struct ProviderBadge: View {
 
             if let assetName {
                 Image(assetName)
-                    .renderingMode(.template)
+                    .renderingMode(.original)
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(.white)
                     .frame(width: 21, height: 21)
                     .accessibilityLabel(provider.displayName)
             } else {
