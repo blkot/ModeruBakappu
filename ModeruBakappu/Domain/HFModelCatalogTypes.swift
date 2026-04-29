@@ -47,14 +47,25 @@ struct HFModelCatalogItem: Identifiable, Equatable {
     let author: String
     let modelName: String
     let pipelineTag: String?
+    let libraryName: String?
     let tags: [String]
     let files: [HFModelFile]
     let downloads: Int
     let likes: Int
     let lastModified: Date
+    let createdAt: Date?
     let safetensorsAvailable: Bool
 
     var displayTitle: String { "\(author)/\(modelName)" }
+
+    var totalSizeBytes: Int64 {
+        files.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    var totalSizeDescription: String? {
+        guard totalSizeBytes > 0 else { return nil }
+        return ByteCountFormatter.string(fromByteCount: totalSizeBytes, countStyle: .file)
+    }
 
     var formattedDownloads: String {
         if downloads >= 1_000_000 {

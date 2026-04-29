@@ -129,6 +129,7 @@ final class CatalogViewModelTests: XCTestCase {
                 author: "author\(idx)",
                 modelName: "model\(idx)",
                 pipelineTag: "text-generation",
+                libraryName: "transformers",
                 tags: ["gguf"],
                 files: [
                     HFModelFile(filename: "model-q4_k_m.gguf", sizeBytes: 5_000_000_000)
@@ -136,6 +137,7 @@ final class CatalogViewModelTests: XCTestCase {
                 downloads: 1000 * idx,
                 likes: 100 * idx,
                 lastModified: Date(),
+                createdAt: Date(),
                 safetensorsAvailable: true
             )
         }

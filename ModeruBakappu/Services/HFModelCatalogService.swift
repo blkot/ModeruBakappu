@@ -36,11 +36,13 @@ private struct RawModelItem: Decodable {
     let author: String?
     let modelId: String?
     let pipelineTag: String?
+    let libraryName: String?
     let tags: [String]?
     let siblings: [RawModelSibling]?
     let downloads: Int?
     let likes: Int?
     let lastModified: String?
+    let createdAt: String?
     let safetensors: RawSafetensors?
 }
 
@@ -74,11 +76,17 @@ private extension HFModelCatalogItem {
 
         id = raw.id
         pipelineTag = raw.pipelineTag
+        libraryName = raw.libraryName
         tags = raw.tags ?? []
         files = (raw.siblings ?? []).map { HFModelFile(filename: $0.rfilename, sizeBytes: $0.size ?? 0) }
         downloads = raw.downloads ?? 0
         likes = raw.likes ?? 0
         lastModified = date
+        createdAt = raw.createdAt.flatMap { raw in
+            let fmt = ISO8601DateFormatter()
+            fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return fmt.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+        }
         safetensorsAvailable = raw.safetensors != nil
     }
 }
@@ -117,6 +125,7 @@ final class HFModelCatalogService: HFModelCatalogServiceProtocol {
 
         queryItems.append(URLQueryItem(name: "sort", value: filter.sortField.rawValue))
         queryItems.append(URLQueryItem(name: "direction", value: filter.ascending ? "1" : "-1"))
+        queryItems.append(URLQueryItem(name: "full", value: "true"))
 
         let limit = 20
         let offset = page * limit
@@ -128,6 +137,8 @@ final class HFModelCatalogService: HFModelCatalogServiceProtocol {
         guard let url = components.url else {
             throw HFModelCatalogError.invalidURL
         }
+
+        print("[HFModelCatalogService] fetching: \(url.absoluteString)")
 
         let (data, response): (Data, URLResponse)
         do {
@@ -151,9 +162,26 @@ final class HFModelCatalogService: HFModelCatalogServiceProtocol {
             throw HFModelCatalogError.decodingError(error)
         }
 
+        #if DEBUG
+        saveSampleResponse(data: data, query: filter.searchQuery, page: page)
+        #endif
+
         let items = rawItems.map { HFModelCatalogItem(raw: $0) }
         let hasMore = rawItems.count == limit
 
         return (items, hasMore)
     }
+
+    #if DEBUG
+    private func saveSampleResponse(data: Data, query: String, page: Int) {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads/ModeruBakappu-samples", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let safeQuery = query.isEmpty ? "all" : query.replacingOccurrences(of: "/", with: "_")
+        let filename = "search-\(safeQuery)-page\(page).json"
+        let url = dir.appendingPathComponent(filename)
+        try? data.write(to: url)
+        print("[HFModelCatalogService] saved sample: \(url.path)")
+    }
+    #endif
 }

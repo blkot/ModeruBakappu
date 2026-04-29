@@ -109,6 +109,7 @@ final class CatalogViewModel: ObservableObject {
         guard index >= items.count - 5 else { return }
 
         let nextPage = currentPage + 1
+        isLoading = true
         searchTask?.cancel()
 
         searchTask = Task { [weak self] in
@@ -142,7 +143,9 @@ final class CatalogViewModel: ObservableObject {
             if page == 0 {
                 items = result.items
             } else {
-                items.append(contentsOf: result.items)
+                let existingIDs = Set(items.map(\.id))
+                let newItems = result.items.filter { !existingIDs.contains($0.id) }
+                items.append(contentsOf: newItems)
             }
 
             currentPage = page

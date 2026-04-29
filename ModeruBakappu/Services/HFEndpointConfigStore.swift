@@ -29,11 +29,24 @@ final class HFEndpointConfigStore {
         else {
             return HFEndpointConfig(endpointURL: HFEndpointConfig.defaultEndpoint, isDefault: true)
         }
-        return HFEndpointConfig(endpointURL: url, isDefault: false)
+        let normalized = Self.normalizeAPIEndpoint(url)
+        if normalized != url {
+            defaults.set(normalized.absoluteString, forKey: HFEndpointConfig.defaultsKey)
+        }
+        print("[HFEndpointConfigStore] loaded endpoint: \(normalized.absoluteString)")
+        return HFEndpointConfig(endpointURL: normalized, isDefault: false)
     }
 
     func saveEndpointConfig(_ config: HFEndpointConfig) {
-        defaults.set(config.endpointURL.absoluteString, forKey: HFEndpointConfig.defaultsKey)
+        let normalized = Self.normalizeAPIEndpoint(config.endpointURL)
+        print("[HFEndpointConfigStore] saving endpoint: \(config.endpointURL.absoluteString) -> \(normalized.absoluteString)")
+        defaults.set(normalized.absoluteString, forKey: HFEndpointConfig.defaultsKey)
+    }
+
+    static func normalizeAPIEndpoint(_ url: URL) -> URL {
+        let path = url.path.hasSuffix("/") ? String(url.path.dropLast()) : url.path
+        guard !path.hasSuffix("/api") else { return url }
+        return url.appendingPathComponent("api")
     }
 
     func scanShellForHFEndpoint() -> String? {
