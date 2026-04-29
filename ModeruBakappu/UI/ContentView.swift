@@ -121,7 +121,7 @@ struct ContentView: View {
                         Text(mode.rawValue)
                             .font(.caption.weight(.medium))
                     }
-                    .frame(width: 92, height: 30)
+                    .frame(width: 116, height: 38)
                     .background(
                         selectedMode == mode
                             ? Color.accentColor.opacity(0.16)
@@ -133,14 +133,15 @@ struct ContentView: View {
                             : Color.secondary
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(3)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .padding(4)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08))
         )
     }
