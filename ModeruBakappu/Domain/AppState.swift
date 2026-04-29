@@ -250,6 +250,7 @@ enum ModelBackupState: Equatable {
     case ready
     case inProgress
     case backedUp(BackupRecord)
+    case destinationConflict(BackupDestinationConflict)
     case failed(String)
 
     var buttonTitle: String {
@@ -260,6 +261,8 @@ enum ModelBackupState: Equatable {
             return "Backing Up…"
         case .backedUp:
             return "Backed Up"
+        case .destinationConflict:
+            return "Blocked"
         case .failed:
             return "Retry Backup"
         }
@@ -275,6 +278,8 @@ enum ModelBackupState: Equatable {
             return "Copying and verifying backup contents."
         case let .backedUp(record):
             return "Verified backup created \(record.backedUpAt.formatted(date: .abbreviated, time: .shortened))."
+        case let .destinationConflict(conflict):
+            return conflict.summary
         case let .failed(message):
             return message
         }
@@ -284,7 +289,7 @@ enum ModelBackupState: Equatable {
         switch self {
         case .ready, .failed:
             return true
-        case .unavailable, .inProgress, .backedUp:
+        case .unavailable, .inProgress, .backedUp, .destinationConflict:
             return false
         }
     }
@@ -293,7 +298,7 @@ enum ModelBackupState: Equatable {
         switch self {
         case let .backedUp(record):
             return record
-        case .unavailable, .ready, .inProgress, .failed:
+        case .unavailable, .ready, .inProgress, .destinationConflict, .failed:
             return nil
         }
     }
@@ -328,6 +333,7 @@ enum ProviderReadinessState: Equatable {
 enum ModelLifecycleState: Equatable {
     case localOnly
     case backedUp(BackupRecord)
+    case backupConflict(BackupDestinationConflict)
     case backupUnavailable
     case backingUp
     case backupFailed(String)
@@ -352,6 +358,8 @@ enum ModelLifecycleState: Equatable {
             return "Local Only"
         case .backedUp:
             return "Backed Up"
+        case .backupConflict:
+            return "Backup Conflict"
         case .backupUnavailable:
             return "Backup Unavailable"
         case .backingUp:
@@ -395,6 +403,8 @@ enum ModelLifecycleState: Equatable {
             return "Stored only on this Mac."
         case let .backedUp(record):
             return "Verified backup at \(record.backupRelativePath)."
+        case let .backupConflict(conflict):
+            return conflict.summary
         case .backupUnavailable:
             return "Backup actions require an online backup drive."
         case .backingUp:
@@ -434,11 +444,20 @@ struct ModelLifecycleStatus: Equatable {
     let providerReadiness: ProviderReadinessState
     let backupState: ModelBackupState
 
+    var hasBackupDestination: Bool {
+        switch state {
+        case .backedUp, .backupConflict, .archived, .restorable, .missingBackupDrive:
+            return true
+        case .localOnly, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .restoring, .restoreFailed, .deletingLocal, .deleteLocalFailed, .deletingBackup, .deleteBackupFailed, .restoreConflict, .providerNotReady, .unknown:
+            return false
+        }
+    }
+
     var canTriggerArchive: Bool {
         switch state {
         case .localOnly, .backedUp, .backupFailed, .archiveFailed:
             return backupState != .inProgress
-        case .backupUnavailable, .backingUp, .archiving, .archived, .restoring, .restoreFailed, .deletingLocal, .deleteLocalFailed, .deletingBackup, .deleteBackupFailed, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+        case .backupConflict, .backupUnavailable, .backingUp, .archiving, .archived, .restoring, .restoreFailed, .deletingLocal, .deleteLocalFailed, .deletingBackup, .deleteBackupFailed, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
             return false
         }
     }
@@ -447,7 +466,7 @@ struct ModelLifecycleStatus: Equatable {
         switch state {
         case .restorable, .restoreFailed:
             return true
-        case .localOnly, .backedUp, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .deletingLocal, .deleteLocalFailed, .deletingBackup, .deleteBackupFailed, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+        case .localOnly, .backedUp, .backupConflict, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .deletingLocal, .deleteLocalFailed, .deletingBackup, .deleteBackupFailed, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
             return false
         }
     }
@@ -456,7 +475,7 @@ struct ModelLifecycleStatus: Equatable {
         switch state {
         case .backedUp, .deleteLocalFailed:
             return true
-        case .localOnly, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .restoreFailed, .deletingLocal, .deletingBackup, .deleteBackupFailed, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+        case .localOnly, .backupConflict, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .restoreFailed, .deletingLocal, .deletingBackup, .deleteBackupFailed, .restorable, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
             return false
         }
     }
@@ -465,7 +484,7 @@ struct ModelLifecycleStatus: Equatable {
         switch state {
         case .backedUp, .restorable, .deleteBackupFailed:
             return true
-        case .localOnly, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .restoreFailed, .deletingLocal, .deleteLocalFailed, .deletingBackup, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
+        case .localOnly, .backupConflict, .backupUnavailable, .backingUp, .backupFailed, .archiving, .archiveFailed, .archived, .restoring, .restoreFailed, .deletingLocal, .deleteLocalFailed, .deletingBackup, .missingBackupDrive, .restoreConflict, .providerNotReady, .unknown:
             return false
         }
     }
@@ -519,6 +538,26 @@ struct BackupRecord: Codable, Equatable, Identifiable {
 enum ModelLocalState: String, Codable, Equatable {
     case present
     case archived
+}
+
+struct BackupDestinationConflict: Equatable {
+    let backupRelativePath: String
+    let expectedSizeBytes: Int64
+    let expectedFileCount: Int
+    let actualSizeBytes: Int64
+    let actualFileCount: Int
+
+    var summary: String {
+        let expectedSize = ByteCountFormatter.string(fromByteCount: expectedSizeBytes, countStyle: .file)
+        let actualSize = ByteCountFormatter.string(fromByteCount: actualSizeBytes, countStyle: .file)
+        return "A backup folder already exists at \(backupRelativePath), but it does not match this local model. Local: \(expectedSize), \(expectedFileCount) files. Backup: \(actualSize), \(actualFileCount) files."
+    }
+}
+
+enum BackupDestinationInspection: Equatable {
+    case missing
+    case matching(BackupRecord)
+    case conflict(BackupDestinationConflict)
 }
 
 struct BackupRootMarker: Codable, Equatable {

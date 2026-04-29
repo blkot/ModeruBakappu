@@ -122,6 +122,43 @@ final class BackupCoordinatorTests: XCTestCase {
         XCTAssertTrue(fileManager.fileExists(atPath: model.folderURL.path))
     }
 
+    func testInspectBackupDestinationReturnsMatchingRecordForExistingPayload() throws {
+        let model = try makeModel(relativePath: "publisher/model-f", files: [
+            "config.json": "{}",
+            "weights.bin": "matching payload"
+        ])
+        let destinationURL = backupRoot.appendingPathComponent("lm-studio/publisher/model-f", isDirectory: true)
+        try writeFile("config.json", contents: "{}", under: destinationURL)
+        try writeFile("weights.bin", contents: "matching payload", under: destinationURL)
+
+        let inspection = try coordinator.inspectBackupDestination(for: model, in: backupRoot)
+
+        guard case let .matching(record) = inspection else {
+            return XCTFail("Expected matching record, got \(inspection)")
+        }
+        XCTAssertEqual(record.modelID, model.id)
+        XCTAssertEqual(record.backupRelativePath, "lm-studio/publisher/model-f")
+        XCTAssertEqual(record.effectiveLocalState, .present)
+    }
+
+    func testInspectBackupDestinationReportsConflictForMismatchedPayload() throws {
+        let model = try makeModel(relativePath: "publisher/model-g", files: [
+            "weights.bin": "local payload"
+        ])
+        let destinationURL = backupRoot.appendingPathComponent("lm-studio/publisher/model-g", isDirectory: true)
+        try writeFile("weights.bin", contents: "different backup payload", under: destinationURL)
+
+        let inspection = try coordinator.inspectBackupDestination(for: model, in: backupRoot)
+
+        guard case let .conflict(conflict) = inspection else {
+            return XCTFail("Expected conflict, got \(inspection)")
+        }
+        XCTAssertEqual(conflict.backupRelativePath, "lm-studio/publisher/model-g")
+        XCTAssertEqual(conflict.expectedFileCount, 1)
+        XCTAssertEqual(conflict.actualFileCount, 1)
+        XCTAssertNotEqual(conflict.expectedSizeBytes, conflict.actualSizeBytes)
+    }
+
     private func makeModel(relativePath: String, files: [String: String]) throws -> DiscoveredModel {
         let modelURL = sourceRoot.appendingPathComponent(relativePath, isDirectory: true)
         for (path, contents) in files {

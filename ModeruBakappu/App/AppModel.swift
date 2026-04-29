@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
     private var restoreFailures: [String: String] = [:]
     private var deleteLocalFailures: [String: String] = [:]
     private var deleteBackupFailures: [String: String] = [:]
+    private var backupDestinationConflicts: [String: BackupDestinationConflict] = [:]
     private var lastBackupValidationFailure: String?
     private let backupRootIDDefaultsKey = "ModeruBakappu.backupRootID"
 
@@ -187,6 +188,8 @@ final class AppModel: ObservableObject {
                 sourceConfigurations[index].discoveryState = .failed(error.localizedDescription)
             }
         }
+
+        reconcileBackupDestinations()
     }
 
     func clearError() {
@@ -248,6 +251,10 @@ final class AppModel: ObservableObject {
             }
         }
 
+        if let conflict = backupDestinationConflicts[model.id] {
+            return .destinationConflict(conflict)
+        }
+
         guard backupDriveState == .online else {
             return .unavailable
         }
@@ -265,6 +272,50 @@ final class AppModel: ObservableObject {
         let backupURL = backupFolderURL.appendingPathComponent(record.backupRelativePath, isDirectory: true)
         var isDirectory: ObjCBool = false
         return fileManager.fileExists(atPath: backupURL.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    private func reconcileBackupDestinations() {
+        guard backupDriveState == .online,
+              let backupFolderURL
+        else {
+            backupDestinationConflicts = [:]
+            return
+        }
+
+        var repairedRecords = false
+        var latestConflicts: [String: BackupDestinationConflict] = [:]
+
+        for model in sourceConfigurations.flatMap(\.models) {
+            guard backupRecords[model.id] == nil else {
+                continue
+            }
+
+            do {
+                switch try backupCoordinator.inspectBackupDestination(for: model, in: backupFolderURL) {
+                case .missing:
+                    continue
+                case let .matching(record):
+                    backupRecords[model.id] = record
+                    repairedRecords = true
+                    print("[AppModel] repaired missing backup record model=\(model.id) path=\(record.backupRelativePath)")
+                case let .conflict(conflict):
+                    latestConflicts[model.id] = conflict
+                    print("[AppModel] backup destination conflict model=\(model.id) path=\(conflict.backupRelativePath)")
+                }
+            } catch {
+                print("[AppModel] backup destination inspection failed model=\(model.id) error=\(error.localizedDescription)")
+            }
+        }
+
+        backupDestinationConflicts = latestConflicts
+
+        if repairedRecords {
+            do {
+                try backupIndexStore.saveIndex(backupRecords)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     func lifecycleStatus(for model: DiscoveredModel) -> ModelLifecycleStatus {
@@ -305,6 +356,8 @@ final class AppModel: ObservableObject {
                 } else {
                     lifecycleState = .backedUp(record)
                 }
+            case let .destinationConflict(conflict):
+                lifecycleState = .backupConflict(conflict)
             case let .failed(message):
                 lifecycleState = .backupFailed(message)
             }
@@ -520,13 +573,14 @@ final class AppModel: ObservableObject {
     }
 
     func revealBackup(for model: DiscoveredModel) {
-        guard let backupFolderURL,
-              let record = backupRecords[model.id]
-        else {
+        guard let backupFolderURL else {
             return
         }
 
-        let backupURL = backupFolderURL.appendingPathComponent(record.backupRelativePath, isDirectory: true)
+        let backupRelativePath = backupRecords[model.id]?.backupRelativePath
+            ?? backupDestinationConflicts[model.id]?.backupRelativePath
+            ?? backupCoordinator.plannedBackupRelativePath(for: model)
+        let backupURL = backupFolderURL.appendingPathComponent(backupRelativePath, isDirectory: true)
         withScopedAccess(to: backupFolderURL) {
             NSWorkspace.shared.activateFileViewerSelecting([backupURL])
         }

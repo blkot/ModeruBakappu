@@ -47,6 +47,65 @@ final class BackupCoordinator {
         try copyAndVerifyBackup(model: model, to: backupRoot)
     }
 
+    func plannedBackupRelativePath(for model: DiscoveredModel) -> String {
+        let sourceDirectory = model.source.replacingOccurrences(of: "_", with: "-")
+        return "\(sourceDirectory)/\(model.relativePath)"
+    }
+
+    func inspectBackupDestination(for model: DiscoveredModel, in backupRoot: URL) throws -> BackupDestinationInspection {
+        var rootIsDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: backupRoot.path, isDirectory: &rootIsDirectory),
+              rootIsDirectory.boolValue
+        else {
+            throw BackupCoordinatorError.backupRootUnavailable
+        }
+
+        let backupRelativePath = plannedBackupRelativePath(for: model)
+        let destinationURL = backupRoot.appendingPathComponent(backupRelativePath, isDirectory: true)
+
+        var destinationIsDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: destinationURL.path, isDirectory: &destinationIsDirectory) else {
+            return .missing
+        }
+
+        let payload: (sizeBytes: Int64, fileCount: Int)
+        if destinationIsDirectory.boolValue {
+            payload = try directoryPayload(in: destinationURL)
+        } else {
+            payload = (sizeBytes: 0, fileCount: 0)
+        }
+
+        guard payload.fileCount == model.fileCount,
+              payload.sizeBytes == model.sizeBytes
+        else {
+            return .conflict(
+                BackupDestinationConflict(
+                    backupRelativePath: backupRelativePath,
+                    expectedSizeBytes: model.sizeBytes,
+                    expectedFileCount: model.fileCount,
+                    actualSizeBytes: payload.sizeBytes,
+                    actualFileCount: payload.fileCount
+                )
+            )
+        }
+
+        return .matching(
+            BackupRecord(
+                modelID: model.id,
+                source: model.source,
+                displayName: model.displayName,
+                relativePath: model.relativePath,
+                backupRelativePath: backupRelativePath,
+                sizeBytes: model.sizeBytes,
+                fileCount: model.fileCount,
+                backedUpAt: .now,
+                localState: .present,
+                archivedAt: nil,
+                restoredAt: nil
+            )
+        )
+    }
+
     func archive(model: DiscoveredModel, to backupRoot: URL, existingRecord: BackupRecord?) throws -> BackupRecord {
         let backupRecord: BackupRecord
 
@@ -166,8 +225,7 @@ final class BackupCoordinator {
             throw BackupCoordinatorError.backupRootUnavailable
         }
 
-        let sourceDirectory = model.source.replacingOccurrences(of: "_", with: "-")
-        let backupRelativePath = "\(sourceDirectory)/\(model.relativePath)"
+        let backupRelativePath = plannedBackupRelativePath(for: model)
         let destinationURL = backupRoot.appendingPathComponent(backupRelativePath, isDirectory: true)
 
         if fileManager.fileExists(atPath: destinationURL.path) {

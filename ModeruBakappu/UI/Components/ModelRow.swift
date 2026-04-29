@@ -60,7 +60,7 @@ struct ModelRow: View {
 
     private var backupStateColor: Color {
         switch backupState {
-        case .failed:
+        case .destinationConflict, .failed:
             return .red
         case .inProgress:
             return .orange

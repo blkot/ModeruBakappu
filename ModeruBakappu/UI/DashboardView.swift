@@ -1028,7 +1028,7 @@ private struct ModelActionMenu: View {
             Button("Reveal Local", action: onRevealLocal)
                 .help("Open the local model folder in Finder.")
             Button("Reveal Backup", action: onRevealBackup)
-                .disabled(status.backupState.backupRecord == nil)
+                .disabled(!status.hasBackupDestination)
                 .help("Open this model's backup folder in Finder.")
 
             Divider()
@@ -1116,6 +1116,8 @@ private struct LifecycleStatusSummary: View {
             return "This model exists only on this Mac. Back Up creates a duplicate on the backup drive." + readinessSuffix
         case .backedUp:
             return "A verified backup exists, and the model is still available locally." + readinessSuffix
+        case let .backupConflict(conflict):
+            return "A folder already exists at the planned backup destination, but it does not match this local model.\n\n\(conflict.summary)" + readinessSuffix
         case .backupUnavailable:
             return "Backup and archive actions require a reachable writable backup drive." + readinessSuffix
         case .backingUp:
@@ -1188,7 +1190,7 @@ private struct LifecycleStatusSummary: View {
 
     private var color: Color {
         switch status.state {
-        case .backupFailed, .archiveFailed, .restoreFailed, .deleteLocalFailed, .deleteBackupFailed, .restoreConflict, .providerNotReady:
+        case .backupConflict, .backupFailed, .archiveFailed, .restoreFailed, .deleteLocalFailed, .deleteBackupFailed, .restoreConflict, .providerNotReady:
             return .red
         case .backingUp, .archiving, .restoring, .deletingLocal, .deletingBackup:
             return .orange
